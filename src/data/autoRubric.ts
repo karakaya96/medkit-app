@@ -7,42 +7,43 @@
 // it just won't quote specific society guidelines.
 
 import type { PatientCase, CaseRubric, RubricCriterion } from '../game/types';
+import { treatmentById } from './treatments.ts';
 
 const GENERIC_INTERPERSONAL: RubricCriterion[] = [
   {
     criterion_id: 'ip-01',
-    label: 'Open with introduction and agenda-setting',
+    label: 'Kendini tanıtma ve gündem belirleme',
     weight: 1,
     framework: 'SEGUE',
-    evidence: 'Greets the patient, introduces self, confirms identity and negotiates the agenda for the visit.',
+    evidence: 'Hastayı selamlar, kendini tanıtır, kimliğini doğrular ve görüşmenin gündemini müzakere eder.',
   },
   {
     criterion_id: 'ip-02',
-    label: 'Explore ICE',
+    label: 'Fikir, endişe ve beklentileri (ICE) keşfetme',
     weight: 2,
     framework: 'ICE',
-    evidence: 'Elicits the patient\u2019s ideas, concerns and expectations \u2014 not just symptom checklists.',
+    evidence: 'Hastanın fikirlerini, endişelerini ve beklentilerini ortaya çıkarır — yalnızca semptom kontrol listesiyle yetinmez.',
   },
   {
     criterion_id: 'ip-03',
-    label: 'Empathic response',
+    label: 'Empatik yanıt',
     weight: 2,
     framework: 'NURSE',
-    evidence: 'Names and validates an emotion the patient expresses; avoids dismissing distress.',
+    evidence: 'Hastanın dile getirdiği duyguyu adlandırır ve doğrular; sıkıntısını küçümsemez.',
   },
   {
     criterion_id: 'ip-04',
-    label: 'Jargon-free explanation',
+    label: 'Jargonsuz açıklama',
     weight: 1,
     framework: 'PLAB2',
-    evidence: 'Explains the working diagnosis and plan in plain English without unexplained medical acronyms.',
+    evidence: 'Çalışma tanısını ve planı, açıklanmayan tıbbi kısaltmalar kullanmadan sade bir dille anlatır.',
   },
   {
     criterion_id: 'ip-05',
-    label: 'Summarise and check understanding',
+    label: 'Özetleme ve anlaşılırlığı kontrol etme',
     weight: 1,
     framework: 'SEGUE',
-    evidence: 'Summarises the plan at the end and invites the patient to repeat back or ask questions.',
+    evidence: 'Planı sonunda özetler ve hastayı tekrar etmeye veya soru sormaya davet eder.',
   },
 ];
 
@@ -55,20 +56,23 @@ export function deriveAutoRubric(c: PatientCase): CaseRubric {
       label: q.question,
       weight: 1,
       framework: 'RCGP',
-      evidence: `Asks the patient: "${q.question}" or a clinically equivalent question.`,
+      evidence: `Hastaya "${q.question}" sorusunu veya klinik olarak eşdeğer bir soruyu sorar.`,
     }));
 
   const clinical_management: RubricCriterion[] = c.criticalTreatmentIds
     .slice(0, 6)
-    .map((tid, i) => ({
-      criterion_id: `cm-${String(i + 1).padStart(2, '0')}`,
-      label: `Deliver critical action: ${tid}`,
-      weight: 3,
-      framework: 'PLAB2',
-      // No guideline_ref \u2014 honest signal to the agent that this is
-      // auto-derived. The agent's hard rule is: never fabricate a citation.
-      evidence: `Records the treatment/action "${tid}" during the encounter.`,
-    }));
+    .map((tid, i) => {
+      const name = treatmentById(tid)?.name ?? tid;
+      return {
+        criterion_id: `cm-${String(i + 1).padStart(2, '0')}`,
+        label: `Kritik işlemi uygula: ${name}`,
+        weight: 3,
+        framework: 'PLAB2',
+        // No guideline_ref — honest signal to the agent that this is
+        // auto-derived. The agent's hard rule is: never fabricate a citation.
+        evidence: `Görüşme sırasında "${name}" işlemini kaydeder.`,
+      };
+    });
 
   return {
     data_gathering,
@@ -76,8 +80,8 @@ export function deriveAutoRubric(c: PatientCase): CaseRubric {
     interpersonal: GENERIC_INTERPERSONAL,
     safety_netting: {
       required_elements: [
-        'Tells the patient what symptoms should prompt urgent return',
-        'Names a specific timeframe or trigger for follow-up',
+        'Hastaya hangi semptomlarda acilen geri dönmesi gerektiğini söyler',
+        'Takip için belirli bir zaman aralığı veya tetikleyici belirtir',
       ],
       weight: 1,
     },

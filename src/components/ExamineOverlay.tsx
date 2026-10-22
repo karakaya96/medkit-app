@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { store, useGameState, POLYCLINIC_BED_INDEX } from '../game/store';
+import { store, useGameState } from '../game/store';
 import { TESTS, TEST_PANELS, testById } from '../data/tests';
 import { getTestReport } from '../data/defaultTestResults';
 import { getImagingExamples } from '../data/radiologyImages';
 import { POLYCLINIC_DIAGNOSIS_LABELS, getCaseSpecialty } from '../data/polyclinicPatients';
 import { MEDICATIONS, CATEGORY_LABELS, SPECIALTY_MEDICATION_CATEGORIES, medicationById, type Medication, type MedicationCategory } from '../data/medications';
+import { TREATMENTS } from '../data/treatments';
 import { CLINIC_LABELS } from '../game/clinic';
 import { getExistingConversation } from '../voice/conversationStore';
 import type { ChatMessage } from '../voice/patientStream';
 
-type Tab = 'history' | 'chat' | 'tests' | 'results' | 'diagnose' | 'rx';
+type Tab = 'history' | 'chat' | 'tests' | 'results' | 'diagnose' | 'rx' | 'plan';
 
 interface Props {
   onClose: () => void;
@@ -18,6 +19,15 @@ interface Props {
 
 const diagLabel = (id: string): string =>
   POLYCLINIC_DIAGNOSIS_LABELS[id] ?? id.replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+
+const FORM_LABELS: Record<Medication['form'], string> = {
+  tablet: 'tablet',
+  capsule: 'kapsül',
+  solution: 'solüsyon',
+  cream: 'krem',
+  spray: 'sprey',
+  injection: 'enjeksiyon',
+};
 
 export function ExamineOverlay({ onClose, onDispatch }: Props) {
   const state = useGameState();
@@ -42,6 +52,7 @@ export function ExamineOverlay({ onClose, onDispatch }: Props) {
 
   const newResultsCount = patient.orderedTestIds.filter((id) => completed.has(id)).length;
   const rxCount = patient.prescriptions?.length ?? 0;
+  const planCount = patient.givenTreatmentIds.length;
   const rxUnlocked = submitted !== null;
 
   const tabs: Array<{ id: Tab; label: string; badge?: number | string; disabled?: boolean }> = [
@@ -51,6 +62,7 @@ export function ExamineOverlay({ onClose, onDispatch }: Props) {
     { id: 'results', label: 'Sonuçlar', badge: newResultsCount > 0 ? newResultsCount : undefined },
     { id: 'diagnose', label: 'Tanı' },
     { id: 'rx', label: 'Rx', badge: rxCount > 0 ? rxCount : undefined, disabled: !rxUnlocked },
+    { id: 'plan', label: 'Plan', badge: planCount > 0 ? planCount : undefined },
   ];
 
   return (
@@ -211,20 +223,21 @@ export function ExamineOverlay({ onClose, onDispatch }: Props) {
           </div>
 
           {tab === 'history' && <HistoryTab patient={patient} />}
-          {tab === 'chat' && <ChatTab patientName={c.name} />}
+          {tab === 'chat' && <ChatTab patientName={c.name} bedIndex={patient.bedIndex} />}
           {tab === 'tests' && <TestsTab patient={patient} />}
           {tab === 'results' && <ResultsTab patient={patient} />}
           {tab === 'diagnose' && (
             <DiagnoseTab
               patient={patient}
-              onDispatch={onDispatch}
+              onGoToPlan={() => setTab('plan')}
               onGoToRx={() => setTab('rx')}
               submitted={submitted}
             />
           )}
           {tab === 'rx' && (
-            <RxTab patient={patient} onDispatch={onDispatch} unlocked={rxUnlocked} />
+            <RxTab patient={patient} onGoToPlan={() => setTab('plan')} unlocked={rxUnlocked} />
           )}
+          {tab === 'plan' && <PlanTab patient={patient} onDispatch={onDispatch} />}
         </div>
 
         {/* Footer hint */}
@@ -875,12 +888,12 @@ function shuffleSeeded<T>(input: readonly T[], seedKey: string): T[] {
 
 function DiagnoseTab({
   patient,
-  onDispatch,
+  onGoToPlan,
   onGoToRx,
   submitted,
 }: {
   patient: NonNullable<ReturnType<typeof useGameState>['polyclinic']['patient']>;
-  onDispatch: () => void;
+  onGoToPlan: () => void;
   onGoToRx: () => void;
   submitted: string | null;
 }) {
@@ -944,8 +957,8 @@ function DiagnoseTab({
           }}
         >
           {isCorrect
-            ? `✓ Spot on — ${diagLabel(c.correctDiagnosisId)}.`
-            : `✗ Not quite. The correct diagnosis was ${diagLabel(c.correctDiagnosisId)}.`}
+            ? `✓ Doğru — ${diagLabel(c.correctDiagnosisId)}.`
+            : `✗ Doğru değil. Doğru tanı: ${diagLabel(c.correctDiagnosisId)}.`}
         </div>
       )}
 
@@ -963,9 +976,9 @@ function DiagnoseTab({
             type="button"
             className="btn-plush ghost"
             style={{ fontSize: 16, padding: '14px 0' }}
-            onClick={onDispatch}
+            onClick={onGoToPlan}
           >
-            Dispatch without Rx →
+            Tedavi ve sevk →
           </button>
         </div>
       )}
@@ -973,11 +986,146 @@ function DiagnoseTab({
   );
 }
 
+// ── Plan tab — treatments, procedures and disposition ────────────
+
+const DISPOSITION_ACTION_LABEL: Record<string, string> = {
+  discharge: 'Hastayı eve taburcu et',
+  observe: 'Gözlem ünitesine al',
+  'admit-floor': 'Servise yatır',
+  'admit-icu': 'Yoğun bakıma yatır',
+};
+
+function PlanTab({
+  patient,
+  onDispatch,
+}: {
+  patient: NonNullable<ReturnType<typeof useGameState>['polyclinic']['patient']>;
+  onDispatch: () => void;
+}) {
+  const selected = new Set(patient.givenTreatmentIds);
+  const medications = TREATMENTS.filter((t) => t.category === 'medication');
+  const procedures = TREATMENTS.filter((t) => t.category === 'procedure');
+  const dispositions = TREATMENTS.filter((t) => t.category === 'disposition');
+  const selectedDisposition = dispositions.find((t) => selected.has(t.id)) ?? null;
+
+  const treatmentButton = (t: (typeof TREATMENTS)[number]) => {
+    const active = selected.has(t.id);
+    return (
+      <button
+        key={t.id}
+        type="button"
+        className="tap btn-plush ghost"
+        aria-pressed={active}
+        onClick={() => store.toggleTreatment(t.id)}
+        style={{
+          background: active ? 'var(--mint)' : 'white',
+          fontSize: 13,
+          fontWeight: 800,
+          padding: '10px 12px',
+          textAlign: 'left',
+        }}
+      >
+        {active ? '✓ ' : '+ '}
+        {t.name}
+      </button>
+    );
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div
+        className="plush"
+        style={{
+          padding: '12px 14px',
+          background: 'var(--cream-2)',
+          fontSize: 13,
+          fontWeight: 700,
+          color: 'var(--ink-2)',
+        }}
+      >
+        İlaç ve girişimleri seç, ardından hastanın sevk/yatış kararını ver.
+        {selected.size > 0 ? ` Seçili: ${selected.size} işlem.` : ' Henüz işlem seçilmedi.'}
+      </div>
+
+      <PlanGroup title="İlaçlar">{medications.map(treatmentButton)}</PlanGroup>
+      <PlanGroup title="Girişimler">{procedures.map(treatmentButton)}</PlanGroup>
+
+      <div>
+        <PlanHeading>Sevk / yatış</PlanHeading>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 8 }}>
+          {dispositions.map((t) => {
+            const active = selected.has(t.id);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                className="tap btn-plush ghost"
+                aria-pressed={active}
+                onClick={() => store.setDisposition(t.id)}
+                style={{
+                  background: active ? 'var(--butter)' : 'white',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  padding: '12px 14px',
+                  textAlign: 'left',
+                }}
+              >
+                {active ? '● ' : '○ '}
+                {t.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="btn-plush primary breathe"
+        style={{ fontSize: 18, padding: '14px 0', opacity: selectedDisposition ? 1 : 0.5 }}
+        disabled={!selectedDisposition}
+        onClick={onDispatch}
+      >
+        {selectedDisposition
+          ? `${DISPOSITION_ACTION_LABEL[selectedDisposition.id] ?? selectedDisposition.name} →`
+          : 'Önce sevk / yatış kararını seç'}
+      </button>
+    </div>
+  );
+}
+
+function PlanGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <PlanHeading>{title}</PlanHeading>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 8 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PlanHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        fontWeight: 900,
+        color: 'var(--ink-2)',
+        letterSpacing: '.06em',
+        textTransform: 'uppercase',
+        marginBottom: 8,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 // ── Chat tab — live voice transcript ─────────────────────────────
 
-function ChatTab({ patientName }: { patientName: string }) {
+function ChatTab({ patientName, bedIndex }: { patientName: string; bedIndex: number }) {
   const [messages, setMessages] = useState<ReadonlyArray<ChatMessage>>(() => {
-    const conv = getExistingConversation(POLYCLINIC_BED_INDEX);
+    const conv = getExistingConversation(bedIndex);
     return conv ? conv.getMessages() : [];
   });
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -986,11 +1134,29 @@ function ChatTab({ patientName }: { patientName: string }) {
   // the doctor talks. The conversation's `subscribeMessages` returns a
   // teardown so we clean up on unmount / patient change.
   useEffect(() => {
-    const conv = getExistingConversation(POLYCLINIC_BED_INDEX);
-    if (!conv) return;
-    setMessages(conv.getMessages());
-    return conv.subscribeMessages((msgs) => setMessages(msgs));
-  }, []);
+    let disposed = false;
+    let stop: (() => void) | null = null;
+    let attempts = 0;
+
+    const attach = () => {
+      if (disposed || stop) return;
+      const conv = getExistingConversation(bedIndex);
+      if (!conv) {
+        // Voice can still be connecting when the exam opens. Keep polling
+        // instead of permanently rendering an empty transcript.
+        if (attempts++ < 50) window.setTimeout(attach, 200);
+        return;
+      }
+      setMessages(conv.getMessages());
+      stop = conv.subscribeMessages((msgs) => setMessages(msgs));
+    };
+    attach();
+
+    return () => {
+      disposed = true;
+      stop?.();
+    };
+  }, [bedIndex]);
 
   // Auto-scroll to the latest message whenever new ones come in.
   useEffect(() => {
@@ -1066,11 +1232,11 @@ function ChatTab({ patientName }: { patientName: string }) {
 
 function RxTab({
   patient,
-  onDispatch,
+  onGoToPlan,
   unlocked,
 }: {
   patient: NonNullable<ReturnType<typeof useGameState>['polyclinic']['patient']>;
-  onDispatch: () => void;
+  onGoToPlan: () => void;
   unlocked: boolean;
 }) {
   const [picked, setPicked] = useState<Record<string, { dose: string; duration: string }>>({});
@@ -1246,7 +1412,7 @@ function RxTab({
                 {m.name}
               </div>
               <div style={{ fontSize: 10, color: 'var(--ink-2)', fontWeight: 700 }}>
-                {m.class} · {m.form}
+                {m.class} · {FORM_LABELS[m.form]}
               </div>
             </button>
           );
@@ -1349,9 +1515,9 @@ function RxTab({
         type="button"
         className="btn-plush primary breathe"
         style={{ fontSize: 18, padding: '14px 0' }}
-        onClick={onDispatch}
+        onClick={onGoToPlan}
       >
-        {submitted.length === 0 ? 'Reçetesiz taburcu et →' : 'Hastayı taburcu et →'}
+        Tedavi ve sevk planına geç →
       </button>
     </div>
   );

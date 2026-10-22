@@ -6,6 +6,52 @@ Each entry: date, what changed, why, what it replaces.
 
 ---
 
+## 2026-10-22 — Free tier hit its daily cap; NVIDIA becomes primary
+
+**What changed.** The backend now talks to NVIDIA NIM directly
+(`LLM_PROVIDER=nvidia`, `nvidia/nemotron-3.5-lightning-30b-a3b`) for patient,
+triage and debrief calls, with OpenRouter `:free` kept as an automatic fallback.
+Provider-specific model envs replace the single OpenRouter model set. NVIDIA
+requests pass `reasoning_effort=none` plus
+`chat_template_kwargs.enable_thinking=false`; without both, the 30B model spent
+the whole token budget on hidden reasoning. Debrief output is capped at 2,500
+tokens and the final error is a Turkish retry message rather than a raw 429.
+
+**Why.** A real encounter ended with
+`429 free-models-per-day` after the 50-request OpenRouter allowance was used up
+during testing. The simulator must work without a credit card, and a daily cap
+that small cannot survive a demo day. The directly-hosted NVIDIA endpoint uses
+the same model without that per-day cap.
+
+**What it replaces.** OpenRouter as the single point of failure. OpenRouter is
+still useful as a fallback, but a 429 no longer reaches the learner. Trade-off:
+an 18-criterion NVIDIA debrief takes ~18–25 s instead of ~13 s; the UI ticker
+covers the wait, and no request fails at the cap.
+
+---
+
+## 2026-10-22 — Voice path stops going silent
+
+**What changed.** edge-tts output is now sanitized before synthesis (stage
+directions, markdown, and long ellipsis runs removed), retried, and backed by
+the working Turkish voice when `tr-TR-AhmetNeural` returns `NoAudioReceived`.
+A shared cooldown file prevents every new job from paying the failing-voice
+latency again. The opening chief complaint is spoken directly with
+`session.say()` instead of a first LLM round-trip.
+
+**Why.** Microsoft's Turkish male edge voice intermittently returns no audio;
+the old wrapper logged the error and returned zero frames, so the patient went
+silent. A live turn showed the failure on `"Şikayetim göğsümde..."` while the
+female voice synthesized the same text normally. The LLM-generated greeting
+also added 5–8 seconds of silence before the first word.
+
+**What it replaces.** Fire-and-forget single-voice synthesis and an
+LLM-generated opening line. The fallback keeps the conversation audible even
+during a provider-side voice outage; the trade-off is a lower-pitched female
+voice for male patients until Ahmet recovers.
+
+---
+
 ## 2026-10-22 — Attending grader moved to the free tier
 
 **What changed.** Replaced the Anthropic Managed Agent grading path with a

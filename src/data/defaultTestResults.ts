@@ -496,6 +496,6 @@ export function getTestReport(
   abnormal: boolean
 ): { text: string; abnormal: boolean } {
   if (caseSpecific) return { text: caseSpecific, abnormal };
-  const defaultText = DEFAULT_RESULTS[testId] ?? 'Study completed. No significant findings.';
+  const defaultText = DEFAULT_RESULTS[testId] ?? 'Tetkik tamamlandı. Anlamlı bulgu yok.';
   return { text: defaultText, abnormal: false };
 }

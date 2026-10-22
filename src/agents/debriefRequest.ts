@@ -18,7 +18,7 @@ import {
   type GuidelineRecommendation,
 } from '../data/guidelines.ts';
 import { TESTS } from '../data/tests.ts';
-import { TREATMENTS } from '../data/treatments.ts';
+import { TREATMENTS, treatmentById as getTreatment } from '../data/treatments.ts';
 
 export interface DebriefRequest {
   case_id: string;
@@ -70,6 +70,14 @@ export interface DebriefRequest {
       medication_id: string;
       dose: string;
       duration: string;
+    }>;
+    disposition: {
+      treatment_id: string;
+      treatment_name: string;
+    } | null;
+    transcript: Array<{
+      role: 'trainee' | 'patient';
+      content: string;
     }>;
     submitted_diagnosis_id: string | null;
     diagnosis_was_correct: boolean | null;
@@ -127,6 +135,20 @@ export function buildDebriefRequest(
     duration: p.duration,
   }));
 
+  const dispositionId = [...patient.givenTreatmentIds]
+    .reverse()
+    .find((tid) => getTreatment(tid)?.category === 'disposition') ?? null;
+  const disposition = dispositionId
+    ? {
+        treatment_id: dispositionId,
+        treatment_name: getTreatment(dispositionId)?.name ?? dispositionId,
+      }
+    : null;
+  const transcript = (patient.transcript ?? []).slice(-120).map((turn) => ({
+    role: turn.role,
+    content: turn.content.slice(0, 1500),
+  }));
+
   return {
     case_id: c.id,
     case_summary: {
@@ -147,6 +169,8 @@ export function buildDebriefRequest(
       tests_ordered,
       treatments_given,
       prescriptions,
+      disposition,
+      transcript,
       submitted_diagnosis_id: patient.submittedDiagnosisId,
       diagnosis_was_correct:
         patient.submittedDiagnosisId === null

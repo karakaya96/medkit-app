@@ -7,9 +7,9 @@ Real-time voice itself runs in `voice_agent.py` as a separate LiveKit
 Agents worker — this server only issues access tokens and pre-creates
 rooms with patient persona metadata.
 
-All model calls use OpenRouter's OpenAI-compatible API with `:free`
-models, so the simulator needs no paid subscription. The only external
-service is LiveKit Cloud's free tier for WebRTC transport.
+All model calls use free OpenAI-compatible endpoints: NVIDIA NIM as the
+primary and OpenRouter `:free` as an automatic fallback, so the simulator
+needs no paid subscription. WebRTC transport is local or LiveKit Cloud free.
 
 GET  /health         → backend + model/voice config report
 POST /agent/debrief  → end-of-encounter OSCE grading (free model)
@@ -141,7 +141,8 @@ def health():
         and os.environ.get("LIVEKIT_API_KEY")
         and os.environ.get("LIVEKIT_API_SECRET")
     )
-    llm_ok = bool(os.environ.get("OPENROUTER_API_KEY"))
+    llm_ok = bool(_provider_key(LLM_PROVIDER))
+    fallback = next((p for p in provider_order() if p != LLM_PROVIDER), None)
     return {
         "ok": True,
         "voice": {
@@ -149,14 +150,15 @@ def health():
             "livekit_configured": livekit_ok,
             "stt": "faster-whisper",
             "tts": "edge-tts",
-            "llm_provider": os.environ.get("LLM_PROVIDER", "openrouter"),
+            "llm_provider": LLM_PROVIDER,
             "llm_configured": llm_ok,
-            "whisper_model": os.environ.get("WHISPER_MODEL", "base"),
+            "whisper_model": os.environ.get("WHISPER_MODEL", "small"),
         },
         "grading": {
-            "provider": "openrouter",
+            "provider": LLM_PROVIDER,
             "api_key_configured": llm_ok,
-            "provider_fallback_configured": bool(os.environ.get("NVIDIA_API_KEY")),
+            "provider_fallback_configured": bool(fallback),
+            "fallback_provider": fallback,
             "model": GRADER_MODEL,
         },
     }
@@ -177,14 +179,88 @@ if not _agent_log.handlers:
     _h.setFormatter(logging.Formatter("[medkit.agent] %(levelname)s %(message)s"))
     _agent_log.addHandler(_h)
 
-# All grading/triage/patient calls go through OpenRouter's free tier.
-# `openrouter/free` is a router that picks whichever free model is
-# currently healthy — more reliable than pinning a model that may be
-# rotated out. Override per task if you prefer a specific model.
-FREE_MODEL = os.environ.get("FREE_MODEL", "openrouter/free")
-GRADER_MODEL = os.environ.get("GRADER_MODEL", FREE_MODEL)
-TRIAGE_MODEL = os.environ.get("TRIAGE_MODEL", FREE_MODEL)
+# All grading/triage/patient calls use a free OpenAI-compatible endpoint.
+# NVIDIA's direct NIM endpoint has no OpenRouter free-models-per-day cap, so it
+# is the preferred provider; OpenRouter remains the zero-cost fallback. Both
+# models are pinned to Nemotron Lightning because the generic free router can
+# spend the whole budget on hidden reasoning and return empty/truncated JSON.
+DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3.5-lightning:free"
+DEFAULT_NVIDIA_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openrouter").strip().lower()
+if LLM_PROVIDER not in ("openrouter", "nvidia"):
+    LLM_PROVIDER = "openrouter"
+
+OPENROUTER_MODELS = {
+    "grader": os.environ.get(
+        "OPENROUTER_GRADER_MODEL",
+        os.environ.get("GRADER_MODEL", DEFAULT_OPENROUTER_MODEL),
+    ),
+    "triage": os.environ.get(
+        "OPENROUTER_TRIAGE_MODEL",
+        os.environ.get("TRIAGE_MODEL", DEFAULT_OPENROUTER_MODEL),
+    ),
+    "patient": os.environ.get(
+        "OPENROUTER_PATIENT_MODEL",
+        os.environ.get("PATIENT_MODEL", DEFAULT_OPENROUTER_MODEL),
+    ),
+}
+NVIDIA_MODELS = {
+    "grader": os.environ.get(
+        "NVIDIA_GRADER_MODEL",
+        os.environ.get("NVIDIA_MODEL", DEFAULT_NVIDIA_MODEL),
+    ),
+    "triage": os.environ.get(
+        "NVIDIA_TRIAGE_MODEL",
+        os.environ.get("NVIDIA_MODEL", DEFAULT_NVIDIA_MODEL),
+    ),
+    "patient": os.environ.get(
+        "NVIDIA_PATIENT_MODEL",
+        os.environ.get("NVIDIA_MODEL", DEFAULT_NVIDIA_MODEL),
+    ),
+}
+TASK_MODELS = {"openrouter": OPENROUTER_MODELS, "nvidia": NVIDIA_MODELS}
+
+# Kept as module constants for tests and /health; they always describe the
+# primary provider.
+FREE_MODEL = OPENROUTER_MODELS["grader"]
+GRADER_MODEL = TASK_MODELS[LLM_PROVIDER]["grader"]
+TRIAGE_MODEL = TASK_MODELS[LLM_PROVIDER]["triage"]
 TRIAGE_MAX_TOKENS = 512
+
+
+def _provider_key(provider: str) -> str:
+    return (
+        os.environ.get("NVIDIA_API_KEY", "")
+        if provider == "nvidia"
+        else os.environ.get("OPENROUTER_API_KEY", "")
+    )
+
+
+def _provider_base_url(provider: str) -> str:
+    if provider == "nvidia":
+        return os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+    return os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+
+def provider_order() -> list[str]:
+    """Primary first, then the other free provider when its key is present."""
+    primary = LLM_PROVIDER
+    fallback = "nvidia" if primary == "openrouter" else "openrouter"
+    order = [primary]
+    if _provider_key(fallback):
+        order.append(fallback)
+    return order
+
+
+def _reasoning_kwargs(provider: str) -> dict:
+    if provider == "nvidia":
+        # NIM needs the chat-template flag; reasoning_effort alone still let
+        # the 30B model burn its budget on hidden thinking with long prompts.
+        return {
+            "reasoning_effort": "none",
+            "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+        }
+    return {"extra_body": {"reasoning": {"enabled": False}}}
 
 DEBRIEF_SYSTEM_PROMPT = (
     "You are a senior clinician grading a trainee in a synthetic OSCE "
@@ -204,7 +280,8 @@ DEBRIEF_SYSTEM_PROMPT = (
     "  • registry_slice — only the guidelines/recommendations cited by the "
     "rubric. Use ONLY recIds that appear here. Never invent a citation.\n"
     "  • encounter_log — history questions asked, tests ordered with "
-    "timestamps, treatments/prescriptions given, submitted diagnosis and "
+    "timestamps, treatments/prescriptions given, an explicit disposition "
+    "(discharge/observe/admit-floor/admit-icu), submitted diagnosis and "
     "whether it was correct. Voice transcript may be included.\n\n"
 
     "Process:\n"
@@ -238,6 +315,8 @@ DEBRIEF_SYSTEM_PROMPT = (
     "'you missed ICE' is not acceptable evidence.\n"
     "  • Never reveal or grade against material absent from the rubric and "
     "registry_slice.\n"
+    "  • Use encounter_log.transcript for communication evidence; quote the "
+    "trainee's actual words. Do not invent dialogue.\n"
     "  • The cases are synthetic and doses simplified; grade only what the "
     "trainee did in this encounter.\n"
     "  • Never frame output as medical advice for real patients."
@@ -245,6 +324,8 @@ DEBRIEF_SYSTEM_PROMPT = (
 
 _openai_client: Optional["OpenAI"] = None
 _openai_async_client: Optional["AsyncOpenAI"] = None
+_openai_clients: dict[str, "OpenAI"] = {}
+_openai_async_clients: dict[str, "AsyncOpenAI"] = {}
 
 
 def _ensure_openai_available() -> None:
@@ -258,36 +339,46 @@ def _ensure_openai_available() -> None:
         )
 
 
-def _require_openai_key() -> str:
-    key = os.environ.get("OPENROUTER_API_KEY")
+def _require_openai_key(provider: str) -> str:
+    key = _provider_key(provider)
     if not key:
         raise HTTPException(
             status_code=500,
-            detail="OPENROUTER_API_KEY is not set server-side (required for patient, triage and debrief).",
+            detail=f"{provider.upper()}_API_KEY is not set server-side (required for patient, triage and debrief).",
         )
     return key
 
 
-def get_openai_client() -> "OpenAI":
+def get_openai_client(provider: Optional[str] = None) -> "OpenAI":
     global _openai_client
-    if _openai_client is None:
+    provider = (provider or LLM_PROVIDER).lower()
+    if provider == LLM_PROVIDER and _openai_client is not None:
+        return _openai_client
+    client = _openai_clients.get(provider)
+    if client is None:
         _ensure_openai_available()
-        _openai_client = OpenAI(
-            api_key=_require_openai_key(),
-            base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        client = OpenAI(
+            api_key=_require_openai_key(provider),
+            base_url=_provider_base_url(provider),
         )
-    return _openai_client
+        _openai_clients[provider] = client
+    return client
 
 
-def get_async_openai_client() -> "AsyncOpenAI":
+def get_async_openai_client(provider: Optional[str] = None) -> "AsyncOpenAI":
     global _openai_async_client
-    if _openai_async_client is None:
+    provider = (provider or LLM_PROVIDER).lower()
+    if provider == LLM_PROVIDER and _openai_async_client is not None:
+        return _openai_async_client
+    client = _openai_async_clients.get(provider)
+    if client is None:
         _ensure_openai_available()
-        _openai_async_client = AsyncOpenAI(
-            api_key=_require_openai_key(),
-            base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        client = AsyncOpenAI(
+            api_key=_require_openai_key(provider),
+            base_url=_provider_base_url(provider),
         )
-    return _openai_async_client
+        _openai_async_clients[provider] = client
+    return client
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -506,18 +597,23 @@ def _format_triage_user_message(req: TriageClassifyRequest) -> str:
 def run_triage_reasoning_openai(
     client: "OpenAI",
     req: TriageClassifyRequest,
+    *,
+    provider: Optional[str] = None,
 ) -> TriageClassifyResponse:
     """Classify an ER arrival through an OpenAI-compatible endpoint.
 
     Pure function modulo the client handle — tests pass a fake client with
     a ``chat.completions.create`` method."""
+    provider = (provider or LLM_PROVIDER).lower()
+    model = TASK_MODELS[provider]["triage"]
     response = client.chat.completions.create(  # type: ignore[attr-defined]
-        model=TRIAGE_MODEL,
+        model=model,
         max_tokens=TRIAGE_MAX_TOKENS,
         messages=[
             {"role": "system", "content": ESI_TRIAGE_SYSTEM_PROMPT},
             {"role": "user", "content": _format_triage_user_message(req)},
         ],
+        **_reasoning_kwargs(provider),
     )
     raw = (response.choices[0].message.content or "").strip()
     if not raw:
@@ -556,15 +652,28 @@ def run_triage_reasoning_openai(
         esi_level=esi,
         rationale=rationale,
         red_flags=red_flags,
-        model=TRIAGE_MODEL,
+        model=model,
     )
 
 
 @app.post("/agent/triage/classify", response_model=TriageClassifyResponse)
 def triage_classify(req: TriageClassifyRequest):
-    """OpenRouter (Nemotron) ile ESI sınıflandırması. OpenAI uyumlu API."""
-    client = get_openai_client()
-    return run_triage_reasoning_openai(client, req)
+    """Nemotron ile ESI sınıflandırması (NVIDIA birincil, OpenRouter yedek)."""
+    last_error: Optional[HTTPException] = None
+    for provider in provider_order():
+        try:
+            client = get_openai_client(provider)
+            return run_triage_reasoning_openai(client, req, provider=provider)
+        except HTTPException as exc:
+            if exc.status_code < 500:
+                raise
+            last_error = exc
+            _agent_log.warning("triage provider=%s failed: %s", provider, exc.detail)
+    _agent_log.error("triage failed on every provider: %s", last_error)
+    raise HTTPException(
+        status_code=502,
+        detail="Triyaj servisi şu an yanıt veremiyor; birkaç dakika sonra tekrar deneyin.",
+    )
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -583,7 +692,7 @@ GRADE_BANDS = (
     (0.55, "satisfactory"),
     (0.40, "borderline"),
 )
-DEBRIEF_MAX_TOKENS = int(os.environ.get("DEBRIEF_MAX_TOKENS", "4096"))
+DEBRIEF_MAX_TOKENS = int(os.environ.get("DEBRIEF_MAX_TOKENS", "2500"))
 DEBRIEF_TIMEOUT_SEC = float(os.environ.get("DEBRIEF_TIMEOUT_SEC", "90"))
 ALLOWED_VERDICTS = {"met", "partially-met", "missed"}
 DOMAINS = ("data_gathering", "clinical_management", "interpersonal")
@@ -648,38 +757,126 @@ def _strip_json(raw: str) -> str:
     return raw
 
 
+def _salvage_truncated_json(raw: str) -> Optional[dict]:
+    """Keep complete criteria objects when the model stops mid-JSON.
+
+    Missing criteria are scored as missed downstream, so a truncated response
+    still produces a usable debrief instead of a hard 502.
+    """
+    anchor = raw.find('"criteria"')
+    arr_start = raw.find("[", anchor) if anchor >= 0 else -1
+    if arr_start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    last_item_end = -1
+    for i in range(arr_start, len(raw)):
+        ch = raw[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "[{":
+            depth += 1
+        elif ch in "]}":
+            depth -= 1
+            if ch == "}" and depth == 1:
+                last_item_end = i + 1
+            if depth == 0:
+                return None
+    if last_item_end < 0:
+        return None
+    candidate = raw[:last_item_end].rstrip().rstrip(",") + "]}"
+    try:
+        parsed = json.loads(candidate)
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _debrief_completion(
+    client: "OpenAI",
+    messages: list[dict],
+    *,
+    json_mode: bool,
+    provider: str,
+):
+    kwargs = {
+        "model": TASK_MODELS[provider]["grader"],
+        "max_tokens": DEBRIEF_MAX_TOKENS,
+        "temperature": 0.2,
+        "timeout": DEBRIEF_TIMEOUT_SEC,
+        "messages": messages,
+        # Some free models spend the entire token budget on hidden reasoning
+        # and return empty content. Grading does not need chain-of-thought.
+        **_reasoning_kwargs(provider),
+    }
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+    return client.chat.completions.create(**kwargs)  # type: ignore[attr-defined]
+
+
 def run_debrief_evaluation_openai(
     client: "OpenAI",
     req: DebriefRequest,
+    *,
+    provider: Optional[str] = None,
 ) -> DebriefResponse:
     """Grade one encounter through an OpenAI-compatible free model."""
+    provider = (provider or LLM_PROVIDER).lower()
+    model = TASK_MODELS[provider]["grader"]
     weights = _rubric_weights(req.rubric)
     if not weights:
         raise HTTPException(status_code=400, detail="rubric contains no criteria")
     user_payload = json.dumps(req.model_dump(), ensure_ascii=False)
-    response = client.chat.completions.create(  # type: ignore[attr-defined]
-        model=GRADER_MODEL,
-        max_tokens=DEBRIEF_MAX_TOKENS,
-        temperature=0.2,
-        timeout=DEBRIEF_TIMEOUT_SEC,
-        messages=[
-            {"role": "system", "content": DEBRIEF_SYSTEM_PROMPT},
-            {"role": "user", "content": user_payload},
-        ],
-    )
-    raw = (response.choices[0].message.content or "").strip()
-    if not raw:
-        raise HTTPException(status_code=502, detail="debrief model returned empty response")
-    try:
-        parsed = json.loads(_strip_json(raw))
-    except ValueError as e:
-        _agent_log.warning("debrief: malformed JSON: %s", raw[:300])
+    messages = [
+        {"role": "system", "content": DEBRIEF_SYSTEM_PROMPT},
+        {"role": "user", "content": user_payload},
+    ]
+    parsed: Optional[dict] = None
+    last_error = ""
+    for attempt, json_mode in enumerate((True, False), start=1):
+        try:
+            response = _debrief_completion(
+                client, messages, json_mode=json_mode, provider=provider
+            )
+        except Exception as e:  # provider/model may reject response_format
+            last_error = f"request failed: {e}"
+            _agent_log.warning("debrief attempt %d: %s", attempt, last_error)
+            continue
+        choice = response.choices[0]
+        raw = (choice.message.content or "").strip()
+        _agent_log.info(
+            "debrief attempt %d: model=%s finish=%s chars=%d",
+            attempt, getattr(response, "model", model),
+            getattr(choice, "finish_reason", "?"), len(raw),
+        )
+        if not raw:
+            last_error = "empty response"
+            continue
+        try:
+            candidate = json.loads(_strip_json(raw))
+        except ValueError:
+            candidate = _salvage_truncated_json(_strip_json(raw))
+            if candidate is not None:
+                _agent_log.warning("debrief: salvaged truncated JSON (%d chars)", len(raw))
+        if isinstance(candidate, dict):
+            parsed = candidate
+            break
+        last_error = "malformed JSON"
+        _agent_log.warning("debrief attempt %d malformed JSON: %r", attempt, raw[:240])
+    if parsed is None:
         raise HTTPException(
             status_code=502,
-            detail=f"debrief model returned malformed JSON: {e}",
+            detail=f"debrief model could not produce valid JSON ({last_error})",
         )
-    if not isinstance(parsed, dict):
-        raise HTTPException(status_code=502, detail="debrief model returned a non-object")
 
     allowed_refs = _allowed_refs(req.registry_slice)
 
@@ -763,7 +960,7 @@ def run_debrief_evaluation_openai(
     improvements = _string_list(parsed.get("improvements"), 3)
     narrative = str(parsed.get("narrative", "")).strip()
     if not narrative:
-        raise HTTPException(status_code=502, detail="debrief model returned no narrative")
+        narrative = "Değerlendirme tamamlandı; ayrıntılar kriter bazında listelenmiştir."
     if not highlights:
         highlights = ["Belirgin bir güçlü yön kaydedilmedi."]
     if not improvements:
@@ -783,14 +980,27 @@ def run_debrief_evaluation_openai(
         "debrief: case=%s criteria=%d global=%s",
         req.case_id, len(criteria), evaluation["global_rating"],
     )
-    return DebriefResponse(evaluation=evaluation, model=GRADER_MODEL)
+    return DebriefResponse(evaluation=evaluation, model=model)
 
 
 @app.post("/agent/debrief", response_model=DebriefResponse)
 def debrief(req: DebriefRequest):
-    """OSCE değerlendirmesi — OpenRouter ücretsiz model, tek çağrı."""
-    client = get_openai_client()
-    return run_debrief_evaluation_openai(client, req)
+    """OSCE değerlendirmesi — ücretsiz model, tek çağrı; sağlayıcı yedeği var."""
+    last_error: Optional[HTTPException] = None
+    for provider in provider_order():
+        try:
+            client = get_openai_client(provider)
+            return run_debrief_evaluation_openai(client, req, provider=provider)
+        except HTTPException as exc:
+            if exc.status_code < 500:
+                raise
+            last_error = exc
+            _agent_log.warning("debrief provider=%s failed: %s", provider, exc.detail)
+    _agent_log.error("debrief failed on every provider: %s", last_error)
+    raise HTTPException(
+        status_code=502,
+        detail="Değerlendirme servisi şu an yanıt veremiyor; birkaç dakika sonra tekrar deneyin.",
+    )
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -803,7 +1013,7 @@ def debrief(req: DebriefRequest):
 # (max 256 tokens) so we skip the keepalive logic the long-lived agent
 # stream needs.
 
-PATIENT_MODEL = os.environ.get("PATIENT_MODEL", FREE_MODEL)
+PATIENT_MODEL = TASK_MODELS[LLM_PROVIDER]["patient"]
 PATIENT_MAX_TOKENS = 256
 
 
@@ -819,30 +1029,41 @@ class PatientStreamRequest(BaseModel):
 
 @app.post("/agent/patient/stream")
 async def patient_stream(req: PatientStreamRequest):
-    client = get_async_openai_client()
-
     async def generator():
-        try:
-            stream = await client.chat.completions.create(  # type: ignore[attr-defined]
-                model=PATIENT_MODEL,
-                max_tokens=PATIENT_MAX_TOKENS,
-                messages=[
-                    {"role": "system", "content": req.system},
-                ] + [
-                    {"role": m.role, "content": m.content} for m in req.messages
-                ],
-                stream=True,
-            )
-            async for chunk in stream:
-                delta = chunk.choices[0].delta
-                if delta.content:
-                    yield "data: " + json.dumps({"text": delta.content}) + "\n\n"
-            yield "data: " + json.dumps({"done": True}) + "\n\n"
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            _agent_log.exception("patient stream failed")
-            yield "data: " + json.dumps({"error": str(e)}) + "\n\n"
+        last_error: Exception | None = None
+        for provider in provider_order():
+            yielded = False
+            try:
+                client = get_async_openai_client(provider)
+                stream = await client.chat.completions.create(  # type: ignore[attr-defined]
+                    model=TASK_MODELS[provider]["patient"],
+                    max_tokens=PATIENT_MAX_TOKENS,
+                    messages=[
+                        {"role": "system", "content": req.system},
+                    ] + [
+                        {"role": m.role, "content": m.content} for m in req.messages
+                    ],
+                    stream=True,
+                    **_reasoning_kwargs(provider),
+                )
+                async for chunk in stream:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        yielded = True
+                        yield "data: " + json.dumps({"text": delta.content}) + "\n\n"
+                yield "data: " + json.dumps({"done": True}) + "\n\n"
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                last_error = e
+                if yielded:
+                    _agent_log.exception("patient stream failed mid-response")
+                    yield "data: " + json.dumps({"error": str(e)}) + "\n\n"
+                    return
+                _agent_log.warning("patient provider=%s failed: %s", provider, e)
+        _agent_log.error("patient stream failed on every provider: %s", last_error)
+        yield "data: " + json.dumps({"error": str(last_error)}) + "\n\n"
 
     return StreamingResponse(
         generator(),
@@ -878,6 +1099,7 @@ class VoiceTokenRequest(BaseModel):
     systemPrompt: str
     initialLine: str
     gender: str  # 'M' | 'F' — speaker gender (parent for pediatric)
+    sttPrompt: Optional[str] = None  # Turkish clinical vocabulary bias
     voiceId: Optional[str] = None  # explicit override
     identity: Optional[str] = None  # browser-side participant identity
 
@@ -909,6 +1131,7 @@ async def voice_token(req: VoiceTokenRequest):
             "caseId": req.caseId,
             "systemPrompt": req.systemPrompt,
             "initialLine": req.initialLine,
+            "sttPrompt": req.sttPrompt,
             "voiceGender": req.gender,
             "voiceId": req.voiceId,
         }

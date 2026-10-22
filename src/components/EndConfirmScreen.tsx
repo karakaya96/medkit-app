@@ -20,6 +20,7 @@ export function EndConfirmScreen() {
   const checked = useStore((s) => s.endConfirm);
   const caseId = useStore((s) => s.selectedCaseId);
   const mode = useStore((s) => s.encounterMode);
+  const completedCount = useStore((s) => s.sessionEncounters.length);
   const c = getCase(caseId);
 
   return (
@@ -102,11 +103,21 @@ export function EndConfirmScreen() {
               fontSize: 15,
               color: 'var(--ink-2)',
               fontWeight: 600,
-              marginBottom: 22,
+              marginBottom: 10,
               maxWidth: 460,
             }}
           >
             Son bir kontrol — bunlar değerlendirmeni etkiler. Gerçekten yaptıklarını işaretle.
+          </div>
+          <div
+            className="chip"
+            style={{ marginBottom: 22, background: 'var(--sky)', fontSize: 11 }}
+          >
+            {mode === 'er'
+              ? 'Bu görüşme değerlendirilecek.'
+              : completedCount > 0
+                ? `Bu oturumda ${completedCount} tamamlanmış hasta değerlendirilecek.`
+                : 'Değerlendirilecek tamamlanmış görüşme yok; önce bir hastayı muayene et.'}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 22 }}>

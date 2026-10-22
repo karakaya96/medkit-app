@@ -1,4 +1,4 @@
-// End-of-encounter debrief backed by the free OpenRouter grader.
+// End-of-encounter debrief backed by the free NVIDIA/OpenRouter grader.
 //
 // The browser posts the rubric, guideline slice and encounter log to
 // `/agent/debrief`. The backend makes one structured call and returns the

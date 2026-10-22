@@ -15,7 +15,7 @@ export const TREATMENTS: Treatment[] = [
   { id: 'abx-broad', name: 'Geniş spektrumlu antibiyotikler', category: 'medication' },
   { id: 'analgesia', name: 'Analjezi (morfin)', category: 'medication' },
   { id: 'ondansetron', name: 'Ondansetron 4 mg IV', category: 'medication' },
-  { id: 'surgery-consult', name: 'Cerrahi konsültasyon', category: 'disposition' },
+  { id: 'surgery-consult', name: 'Cerrahi konsültasyon', category: 'procedure' },
   { id: 'admit-icu', name: 'Yoğun bakım ünitesine kabul', category: 'disposition' },
   { id: 'admit-floor', name: 'Servise yatış', category: 'disposition' },
   { id: 'observe', name: 'Gözlem ünitesi', category: 'disposition' },

@@ -121,6 +121,60 @@ class DebriefGradingTests(unittest.TestCase):
         missing = next(c for c in ev["criteria"] if c["criterion_id"] == "dg-2")
         self.assertEqual(missing["verdict"], "missed")
 
+    def test_truncated_json_is_salvaged(self) -> None:
+        truncated = json.dumps({
+            "criteria": [
+                {"criterion_id": "dg-1", "verdict": "met", "evidence": "Sordu."},
+            ],
+            "safety_breach": None,
+            "highlights": [],
+            "improvements": [],
+            "narrative": "Uzun bir anlatı",
+        }, ensure_ascii=False)[:210]
+        client = MagicMock()
+        client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(
+                message=SimpleNamespace(content=truncated),
+                finish_reason="length",
+            )],
+            model=server.GRADER_MODEL,
+        )
+        ev = server.run_debrief_evaluation_openai(client, _request()).evaluation
+        self.assertEqual([c["criterion_id"] for c in ev["criteria"]], ["dg-1", "dg-2", "cm-1"])
+        self.assertEqual(ev["criteria"][1]["verdict"], "missed")
+        self.assertTrue(ev["narrative"])
+
+    def test_malformed_json_is_retried(self) -> None:
+        valid = json.dumps({
+            "criteria": [
+                {"criterion_id": "dg-1", "verdict": "met", "evidence": "Sordu."},
+            ],
+            "safety_breach": None,
+            "highlights": ["İyi."],
+            "improvements": ["Eksik."],
+            "narrative": "Değerlendirme.",
+        }, ensure_ascii=False)
+        client = MagicMock()
+        client.chat.completions.create.side_effect = [
+            SimpleNamespace(
+                choices=[SimpleNamespace(
+                    message=SimpleNamespace(content='{"criteria": [{"criterion_id": "dg-1", "verdict'),
+                    finish_reason="length",
+                )],
+                model=server.GRADER_MODEL,
+            ),
+            SimpleNamespace(
+                choices=[SimpleNamespace(
+                    message=SimpleNamespace(content=valid),
+                    finish_reason="stop",
+                )],
+                model=server.GRADER_MODEL,
+            ),
+        ]
+        ev = server.run_debrief_evaluation_openai(client, _request()).evaluation
+        self.assertEqual(client.chat.completions.create.call_count, 2)
+        self.assertEqual(ev["criteria"][0]["verdict"], "met")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,14 @@ set -u
 cd "$(dirname "$0")/../.."
 
 ENV_FILE="backend/.env.local"
-REQUIRED=(OPENROUTER_API_KEY LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET)
+LLM_PROVIDER=$(grep -E "^LLM_PROVIDER=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)
+LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
+if [ "$LLM_PROVIDER" = "nvidia" ]; then
+  LLM_KEY=NVIDIA_API_KEY
+else
+  LLM_KEY=OPENROUTER_API_KEY
+fi
+REQUIRED=("$LLM_KEY" LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET)
 fail=0
 
 echo "Ses hazırlık denetimi"

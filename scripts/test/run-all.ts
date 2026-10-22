@@ -26,7 +26,7 @@ if (files.length === 0) {
 }
 
 let failed = 0;
-const stream = run({ files, concurrency: true });
+const stream = run({ files, concurrency: false });
 stream.on('test:fail', () => {
   failed += 1;
 });

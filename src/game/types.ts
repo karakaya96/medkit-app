@@ -164,6 +164,11 @@ export type PatientStatus =
   | 'discharged'
   | 'deceased';
 
+export interface EncounterTranscriptTurn {
+  role: 'trainee' | 'patient';
+  content: string;
+}
+
 export interface ActivePatient {
   case: PatientCase;
   bedIndex: number;
@@ -182,6 +187,7 @@ export interface ActivePatient {
     duration: string;
     prescribedAt: number;
   }>;
+  transcript?: EncounterTranscriptTurn[];
 }
 
 export interface PolyclinicSlice {
@@ -217,10 +223,13 @@ export interface GameState {
   /** ER board state (beds + waiting queue). */
   er: ErSlice;
   /** Snapshot of the most recently completed encounter, taken at the moment
-   *  the patient walks out (see `Store.finishPolyclinicCase`). DebriefScreen
-   *  reads this so the grading agent still has the full action log even
-   *  though `polyclinic.patient` has been cleared for the walk-out animation. */
+   *  the patient walks out (see `Store.finishPolyclinicCase`). Used by the ER
+   *  single-encounter debrief and kept for backward compatibility. */
   lastEncounter: ActivePatient | null;
+  /** Completed polyclinic encounters in the current session, oldest first.
+   *  The end-of-session debrief grades every snapshot here so patients seen
+   *  earlier in the shift are not lost when a new one is auto-loaded. */
+  sessionEncounters: ActivePatient[];
   /** When set, DebriefScreen renders the saved evaluation with this id from
    *  `evalHistory` storage instead of running the agent against a live
    *  encounter. Cleared when the user navigates away. */

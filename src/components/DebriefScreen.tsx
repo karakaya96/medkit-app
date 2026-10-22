@@ -9,13 +9,20 @@ import { useAttendingDebrief } from '../agents/useAttendingDebrief';
 import { buildDebriefRequest, summariseRequest } from '../agents/debriefRequest';
 import { saveEvalHistory, getEvalHistory, type EvalHistoryEntry } from '../data/evalHistory';
 import { POLYCLINIC_DIAGNOSIS_LABELS } from '../data/polyclinicPatients';
+import {
+  aggregateDomainScore,
+  averagePercent,
+  evaluationPercent,
+  polyclinicSessionPatients,
+  verdictFromPercent,
+} from '../game/session';
 import type {
   CaseEvaluationInput,
   CriterionResult,
   DomainScore,
   VerdictBand,
 } from '../agents/customTools';
-import type { ActivePatient, PatientCase } from '../game/types';
+import type { ActivePatient, EncounterMode, PatientCase } from '../game/types';
 
 // ── verdict / colour mapping ───────────────────────────────────────
 
@@ -491,15 +498,127 @@ export function DebriefScreen() {
     return state.viewedEvalHistoryId ? getEvalHistory(state.viewedEvalHistoryId) : null;
   }, [state.viewedEvalHistoryId]);
 
-  // Prefer the snapshot captured by `finishPolyclinicCase` — by the time we
-  // mount, the live patient slot has been cleared so the 3D scene can play
-  // the walk-out animation. Fall back to a still-seated patient (rare:
-  // the screen was opened directly without ending the encounter).
-  const patient = reviewed?.patientSnapshot ?? state.lastEncounter ?? state.polyclinic.patient;
-  const c = useMemo<PatientCase | null>(() => {
-    return patient?.case ?? (state.selectedCaseId ? getPatientCase(state.selectedCaseId) : null) ?? null;
-  }, [patient, state.selectedCaseId]);
+  const sessionPatients = useMemo(() => polyclinicSessionPatients(state), [state]);
+  const singlePatient =
+    reviewed?.patientSnapshot ??
+    (state.encounterMode === 'er'
+      ? state.lastEncounter ?? state.polyclinic.patient
+      : null);
+  const singleCase =
+    reviewed?.patientSnapshot.case ??
+    singlePatient?.case ??
+    (state.encounterMode === 'er' && state.selectedCaseId
+      ? getPatientCase(state.selectedCaseId) ?? null
+      : null);
 
+  // Clear review mode when the user navigates away from this screen.
+  useEffect(() => {
+    return () => {
+      if (store.getState().viewedEvalHistoryId) store.clearViewedEval();
+    };
+  }, []);
+
+  if (reviewed) {
+    return (
+      <SingleDebrief
+        patient={reviewed.patientSnapshot}
+        c={reviewed.patientSnapshot.case}
+        mode={state.encounterMode}
+        reviewed={reviewed}
+      />
+    );
+  }
+
+  if (state.encounterMode === 'polyclinic') {
+    if (sessionPatients.length === 0) {
+      return <SingleDebrief patient={null} c={null} mode="polyclinic" />;
+    }
+    if (sessionPatients.length === 1) {
+      return (
+        <SingleDebrief
+          patient={sessionPatients[0]}
+          c={sessionPatients[0].case}
+          mode="polyclinic"
+        />
+      );
+    }
+    return <SessionDebrief patients={sessionPatients} />;
+  }
+
+  return <SingleDebrief patient={singlePatient} c={singleCase} mode="er" />;
+}
+
+function DebriefFrame({
+  mode,
+  children,
+  footer,
+}: {
+  mode: EncounterMode;
+  children: React.ReactNode;
+  footer: React.ReactNode;
+}) {
+  return (
+    <div className="screen paper" style={{ overflowY: 'auto' }}>
+      <TopBar
+        here={5}
+        steps={
+          mode === 'er'
+            ? ['Acil Servis', 'Triyaj', 'Vaka', 'Brifing', 'Muayene', 'Değerlendirme']
+            : ['Poliklinik', 'Pratisyen', 'Vaka', 'Brifing', 'Muayene', 'Değerlendirme']
+        }
+      />
+      <div style={{ padding: '28px 36px 60px', maxWidth: 1080, margin: '0 auto' }}>
+        {children}
+        {footer}
+      </div>
+    </div>
+  );
+}
+
+function DebriefFooter({
+  mode,
+  clearSession,
+}: {
+  mode: EncounterMode;
+  clearSession: boolean;
+}) {
+  const navigate = (screen: 'er' | 'mode' | 'library') => {
+    if (clearSession) store.clearSessionEncounters();
+    store.setScreen(screen);
+  };
+  return (
+    <div style={{ display: 'flex', gap: 12, marginTop: 22 }}>
+      <button
+        type="button"
+        className="btn-plush ghost"
+        style={{ flex: 1 }}
+        onClick={() => navigate(mode === 'er' ? 'er' : 'mode')}
+      >
+        {mode === 'er' ? '\u2190 Acil servise dön' : '\u2190 Polikliniklere dön'}
+      </button>
+      <button
+        type="button"
+        className="btn-plush primary"
+        style={{ flex: 1.6 }}
+        onClick={() => navigate(mode === 'er' ? 'er' : 'library')}
+      >
+        {mode === 'er' ? 'Triyaj panosuna dön \u2192' : 'Sıradaki vaka \u2192'}
+      </button>
+    </div>
+  );
+}
+
+function SingleDebrief({
+  patient,
+  c,
+  mode,
+  reviewed,
+}: {
+  patient: ActivePatient | null;
+  c: PatientCase | null;
+  mode: EncounterMode;
+  reviewed?: EvalHistoryEntry | null;
+}) {
   // In review mode, skip the agent — we already have the evaluation.
   const debriefRequest = useMemo(() => {
     if (reviewed) return null;
@@ -520,90 +639,399 @@ export function DebriefScreen() {
     if (savedRef.current) return;
     if (!evaluation || !patient || !c) return;
     savedRef.current = true;
-    const dxId = patient.submittedDiagnosisId ?? c.correctDiagnosisId;
-    saveEvalHistory({
-      caseId: c.id,
-      caseName: c.name,
-      caseAge: c.age,
-      caseGender: c.gender,
-      diagnosisLabel: POLYCLINIC_DIAGNOSIS_LABELS[dxId] ?? dxId,
-      verdict: evaluation.global_rating,
-      evaluation,
-      patientSnapshot: patient,
-    });
+    saveEvaluation(patient, c, evaluation);
   }, [evaluation, patient, c, reviewed]);
 
-  // Clear review mode when the user navigates away from this screen.
-  useEffect(() => {
-    return () => {
-      if (state.viewedEvalHistoryId) store.clearViewedEval();
+  return (
+    <DebriefFrame
+      mode={mode}
+      footer={<DebriefFooter mode={mode} clearSession={!reviewed} />}
+    >
+      {!c || !patient ? (
+        <StatusBanner
+          title="Değerlendirilecek aktif vaka yok"
+          body="Görüşme zaten kapatıldı. Yeni bir vakayla başlamak için kütüphaneden vaka seç."
+          bg="var(--cream-2)"
+        />
+      ) : status === 'starting' || status === 'idle' ? (
+        <StatusBanner
+          title={'Değerlendirmen hazırlanıyor\u2026'}
+          body={`Görüşme ve değerlendirme ölçütleri paketleniyor (${summarise(debriefRequest)}). Hoca birazdan puanlamaya başlayacak.`}
+          bg="var(--sky)"
+        />
+      ) : status === 'streaming' && !evaluation ? (
+        <GradingProgress partialNarration={partialNarration} />
+      ) : status === 'error' ? (
+        <StatusBanner
+          title={'Değerlendirme oluşturulamadı'}
+          body={error ?? 'Bilinmeyen hata. Görüşme hâlâ kayıtlı — ana ekrandan tekrar dene.'}
+          bg="var(--rose)"
+        />
+      ) : evaluation ? (
+        <EvaluationBody evaluation={evaluation} patient={patient} c={c} />
+      ) : (
+        <StatusBanner
+          title="Henüz değerlendirme yok"
+          body={'Hoca bir sonuç üretmedi. Bu durum devam ederse görüşmeyi yeniden başlat.'}
+          bg="var(--cream-2)"
+        />
+      )}
+    </DebriefFrame>
+  );
+}
+
+// ── Session debrief — grade every patient in the shift ─────────────
+
+type SessionResult =
+  | { status: 'done'; evaluation: CaseEvaluationInput }
+  | { status: 'error'; error: string };
+
+function SessionDebrief({ patients }: { patients: ActivePatient[] }) {
+  const [current, setCurrent] = useState(0);
+  const [attempt, setAttempt] = useState(0);
+  const [selected, setSelected] = useState(0);
+  const [results, setResults] = useState<Record<number, SessionResult>>({});
+  const resultsRef = useRef<Record<number, SessionResult>>({});
+
+  const requests = useMemo(
+    () => patients.map((p) => buildDebriefRequest(p.case, p)),
+    [patients],
+  );
+
+  const nextPending = (from: number, known = resultsRef.current): number => {
+    for (let i = from; i < patients.length; i += 1) {
+      if (!known[i]) return i;
+    }
+    return patients.length;
+  };
+
+  const handleDone = (index: number, evaluation: CaseEvaluationInput) => {
+    if (resultsRef.current[index]) return;
+    const patient = patients[index];
+    const c = patient.case;
+    const record: Record<number, SessionResult> = {
+      ...resultsRef.current,
+      [index]: { status: 'done', evaluation },
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    resultsRef.current = record;
+    setResults(record);
+    saveEvaluation(patient, c, evaluation);
+    setCurrent(nextPending(index + 1, record));
+  };
+
+  const handleSkip = (index: number, error: string) => {
+    if (resultsRef.current[index]) return;
+    const record: Record<number, SessionResult> = {
+      ...resultsRef.current,
+      [index]: { status: 'error', error },
+    };
+    resultsRef.current = record;
+    setResults(record);
+    setCurrent(nextPending(index + 1, record));
+  };
+
+  const retryAt = (index: number) => {
+    const record = { ...resultsRef.current };
+    delete record[index];
+    resultsRef.current = record;
+    setResults(record);
+    setCurrent(index);
+    setSelected(index);
+    setAttempt((n) => n + 1);
+  };
+
+  const active = current < patients.length ? patients[current] : null;
+  const grading = active !== null && !results[current];
 
   return (
-    <div className="screen paper" style={{ overflowY: 'auto' }}>
-      <TopBar
-        here={5}
-        steps={
-          state.encounterMode === 'er'
-            ? ['Acil Servis', 'Triyaj', 'Vaka', 'Brifing', 'Muayene', 'Değerlendirme']
-            : ['Poliklinik', 'Pratisyen', 'Vaka', 'Brifing', 'Muayene', 'Değerlendirme']
-        }
-      />
+    <DebriefFrame mode="polyclinic" footer={<DebriefFooter mode="polyclinic" clearSession />}>
+      {grading && active ? (
+        <>
+          <SessionProgressHeader
+            current={current}
+            total={patients.length}
+            patient={active}
+          />
+          <SessionGrader
+            key={`${current}-${attempt}`}
+            index={current}
+            patient={active}
+            request={requests[current]}
+            onDone={handleDone}
+            onSkip={handleSkip}
+            onRetry={() => retryAt(current)}
+          />
+        </>
+      ) : (
+        <SessionSummary
+          patients={patients}
+          results={results}
+          selected={selected}
+          onSelect={setSelected}
+          onRetry={retryAt}
+        />
+      )}
+    </DebriefFrame>
+  );
+}
 
-      <div style={{ padding: '28px 36px 60px', maxWidth: 1080, margin: '0 auto' }}>
-        {!c || !patient ? (
-          <StatusBanner
-            title="Değerlendirilecek aktif vaka yok"
-            body="Görüşme zaten kapatıldı. Yeni bir vakayla başlamak için kütüphaneden vaka seç."
-            bg="var(--cream-2)"
-          />
-        ) : status === 'starting' || status === 'idle' ? (
-          <StatusBanner
-            title={'Değerlendirmen hazırlanıyor\u2026'}
-            body={`Görüşme ve değerlendirme ölçütleri paketleniyor (${summarise(debriefRequest)}). Hoca birazdan puanlamaya başlayacak.`}
-            bg="var(--sky)"
-          />
-        ) : status === 'streaming' && !evaluation ? (
-          <GradingProgress partialNarration={partialNarration} />
-        ) : status === 'error' ? (
-          <StatusBanner
-            title={'Değerlendirme oluşturulamadı'}
-            body={error ?? 'Bilinmeyen hata. Görüşme hâlâ kayıtlı — ana ekrandan tekrar dene.'}
-            bg="var(--rose)"
-          />
-        ) : evaluation ? (
-          <EvaluationBody evaluation={evaluation} patient={patient} c={c} />
-        ) : (
-          <StatusBanner
-            title="Henüz değerlendirme yok"
-            body={'Hoca bir sonuç üretmedi. Bu durum devam ederse görüşmeyi yeniden başlat.'}
-            bg="var(--cream-2)"
-          />
-        )}
-
-        <div style={{ display: 'flex', gap: 12, marginTop: 22 }}>
-          <button
-            type="button"
-            className="btn-plush ghost"
-            style={{ flex: 1 }}
-            onClick={() => store.setScreen(state.encounterMode === 'er' ? 'er' : 'mode')}
-          >
-            {state.encounterMode === 'er' ? '\u2190 Acil servise dön' : '\u2190 Polikliniklere dön'}
-          </button>
-          <button
-            type="button"
-            className="btn-plush primary"
-            style={{ flex: 1.6 }}
-            onClick={() => store.setScreen(state.encounterMode === 'er' ? 'er' : 'library')}
-          >
-            {state.encounterMode === 'er' ? 'Triyaj panosuna dön \u2192' : 'Sıradaki vaka \u2192'}
-          </button>
-        </div>
+function SessionProgressHeader({
+  current,
+  total,
+  patient,
+}: {
+  current: number;
+  total: number;
+  patient: ActivePatient;
+}) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div className="chip butter" style={{ marginBottom: 12 }}>
+        OTURUM DEĞERLENDİRMESİ
+      </div>
+      <h1 style={{ fontSize: 30, lineHeight: 1.1, marginBottom: 6 }}>
+        {total} hasta sırayla değerlendiriliyor{'\u2026'}
+      </h1>
+      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-2)' }}>
+        {`Hasta ${current + 1}/${total} \u00B7 ${patient.case.name} \u00B7 ${patient.case.chiefComplaint}`}
       </div>
     </div>
   );
+}
+
+function SessionGrader({
+  index,
+  patient,
+  request,
+  onDone,
+  onSkip,
+  onRetry,
+}: {
+  index: number;
+  patient: ActivePatient;
+  request: ReturnType<typeof buildDebriefRequest>;
+  onDone: (index: number, evaluation: CaseEvaluationInput) => void;
+  onSkip: (index: number, error: string) => void;
+  onRetry: () => void;
+}) {
+  const live = useAttendingDebrief(request);
+  const handledRef = useRef(false);
+
+  useEffect(() => {
+    if (handledRef.current || !live.evaluation) return;
+    handledRef.current = true;
+    onDone(index, live.evaluation);
+  }, [index, live.evaluation, onDone]);
+
+  if (live.evaluation) return null;
+
+  if (live.status === 'error') {
+    return (
+      <>
+        <StatusBanner
+          title={`${patient.case.name} değerlendirilemedi`}
+          body={live.error ?? 'Bilinmeyen hata. Diğer hastalara geçebilir veya tekrar deneyebilirsin.'}
+          bg="var(--rose)"
+        />
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+          <button type="button" className="btn-plush ghost" style={{ flex: 1 }} onClick={onSkip.bind(null, index, live.error ?? 'Değerlendirme atlandı.')}>
+            Bu hastayı atla
+          </button>
+          <button type="button" className="btn-plush primary" style={{ flex: 1 }} onClick={onRetry}>
+            Tekrar dene
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  return <GradingProgress partialNarration={live.partialNarration} />;
+}
+
+const VERDICT_CHIP: Record<VerdictBand, string> = {
+  excellent: 'mint',
+  good: 'mint',
+  satisfactory: 'butter',
+  borderline: 'peach',
+  'clear-fail': 'rose',
+};
+
+function SessionSummary({
+  patients,
+  results,
+  selected,
+  onSelect,
+  onRetry,
+}: {
+  patients: ActivePatient[];
+  results: Record<number, SessionResult>;
+  selected: number;
+  onSelect: (index: number) => void;
+  onRetry: (index: number) => void;
+}) {
+  const evaluations = patients
+    .map((_, i) => results[i])
+    .filter((r): r is Extract<SessionResult, { status: 'done' }> => r?.status === 'done')
+    .map((r) => r.evaluation);
+  const completed = evaluations.length;
+  const failed = patients.length - completed;
+  const avg = averagePercent(evaluations);
+  const avgVerdict = verdictFromPercent(avg);
+  const selectedResult = results[selected];
+  const selectedPatient = patients[selected];
+
+  return (
+    <>
+      <div
+        className="plush-lg popin"
+        style={{
+          background: completed > 0 ? GLOBAL_BG[avgVerdict] : 'var(--cream-2)',
+          padding: 24,
+          position: 'relative',
+          marginBottom: 22,
+          transform: 'rotate(-0.4deg)',
+        }}
+      >
+        <div style={{ position: 'absolute', top: -14, left: 24 }} className="chip butter">
+          OTURUM ÖZETİ
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
+          <div className="floaty">
+            <div
+              className="plush"
+              style={{
+                width: 110,
+                height: 110,
+                background: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Doodle kind="star" size={86} color="#FFD86B" />
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 800,
+                color: 'var(--ink-2)',
+                textTransform: 'uppercase',
+                letterSpacing: '.06em',
+              }}
+            >
+              {patients.length} hasta
+            </div>
+            <h1 style={{ fontSize: 34, lineHeight: 1.05, margin: '4px 0 8px' }}>
+              {completed > 0 ? GLOBAL_HEADLINE[avgVerdict] : 'Değerlendirme tamamlanamadı'}
+            </h1>
+            <div style={{ fontSize: 15, lineHeight: 1.5, fontWeight: 700 }}>
+              {completed > 0
+                ? `Ortalama %${Math.round(avg * 100)} \u00B7 ${completed} hasta değerlendirildi${failed > 0 ? ` \u00B7 ${failed} hasta atlandı` : ''}`
+                : 'Hiçbir hasta için değerlendirme alınamadı. Aşağıdan tekrar deneyebilirsin.'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {completed > 0 && (
+        <div className="plush" style={{ padding: 18, marginBottom: 22 }}>
+          <SectionLabel>OTURUM ALAN ORTALAMALARI</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+            <DomainRing label="Veri Toplama" score={aggregateDomainScore(evaluations, 'data_gathering')} />
+            <DomainRing label="Klinik Yönetim" score={aggregateDomainScore(evaluations, 'clinical_management')} />
+            <DomainRing label="Kişilerarası" score={aggregateDomainScore(evaluations, 'interpersonal')} />
+          </div>
+        </div>
+      )}
+
+      <div className="plush" style={{ padding: 18, marginBottom: 22 }}>
+        <SectionLabel>HASTALAR</SectionLabel>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+          {patients.map((p, i) => {
+            const r = results[i];
+            const isSelected = i === selected;
+            return (
+              <button
+                key={`${p.case.id}-${p.arrivedAt}`}
+                type="button"
+                onClick={() => onSelect(i)}
+                style={{
+                  textAlign: 'left',
+                  padding: '10px 12px',
+                  background: isSelected ? 'var(--butter)' : 'white',
+                  border: '3px solid var(--line)',
+                  borderRadius: 14,
+                  boxShadow: isSelected ? '0 3px 0 var(--line)' : 'var(--plush-tiny)',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <div style={{ fontWeight: 900, fontSize: 14 }}>
+                  {i + 1}. {p.case.name}
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-2)', margin: '2px 0 6px' }}>
+                  {p.case.chiefComplaint}
+                </div>
+                {r?.status === 'done' ? (
+                  <span className={`chip ${VERDICT_CHIP[r.evaluation.global_rating]}`} style={{ fontSize: 10 }}>
+                    {GLOBAL_HEADLINE[r.evaluation.global_rating].split(' \u2014 ')[0]} \u00B7 %{Math.round(evaluationPercent(r.evaluation) * 100)}
+                  </span>
+                ) : (
+                  <span className="chip rose" style={{ fontSize: 10 }}>
+                    değerlendirilemedi
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {selectedPatient && selectedResult?.status === 'done' ? (
+        <EvaluationBody
+          evaluation={selectedResult.evaluation}
+          patient={selectedPatient}
+          c={selectedPatient.case}
+        />
+      ) : selectedPatient ? (
+        <>
+          <StatusBanner
+            title={`${selectedPatient.case.name} değerlendirilemedi`}
+            body={selectedResult?.status === 'error' ? selectedResult.error : 'Bu hasta için değerlendirme yok.'}
+            bg="var(--rose)"
+          />
+          <button
+            type="button"
+            className="btn-plush primary"
+            style={{ marginBottom: 22 }}
+            onClick={() => onRetry(selected)}
+          >
+            Tekrar dene
+          </button>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function saveEvaluation(
+  patient: ActivePatient,
+  c: PatientCase,
+  evaluation: CaseEvaluationInput,
+): void {
+  const dxId = patient.submittedDiagnosisId ?? c.correctDiagnosisId;
+  saveEvalHistory({
+    caseId: c.id,
+    caseName: c.name,
+    caseAge: c.age,
+    caseGender: c.gender,
+    diagnosisLabel: POLYCLINIC_DIAGNOSIS_LABELS[dxId] ?? dxId,
+    verdict: evaluation.global_rating,
+    evaluation,
+    patientSnapshot: patient,
+  });
 }
 
 function summarise(req: ReturnType<typeof buildDebriefRequest> | null): string {

@@ -83,6 +83,8 @@ export interface ConversationOptions {
   voiceGender?: 'M' | 'F';
   /** Stable case id — backend uses this for logging + voice slot pick. */
   caseId?: string;
+  /** Optional Turkish clinical prompt used to bias Whisper decoding. */
+  sttPrompt?: string;
   /** Preserved for back-compat. Ignored — voice ID is chosen server-side now. */
   voice?: string;
   /** If set, persist/restore the conversation history to localStorage under this key. */
@@ -100,6 +102,7 @@ async function fetchVoiceToken(opts: {
   systemPrompt: string;
   initialLine: string;
   gender: 'M' | 'F';
+  sttPrompt?: string;
 }): Promise<VoiceTokenResponse> {
   const r = await fetch('/voice/token', {
     method: 'POST',
@@ -125,6 +128,7 @@ export class Conversation {
   private initialMessage: { role: 'assistant'; content: string };
   private voiceGender: 'M' | 'F';
   private caseId: string;
+  private sttPrompt: string | undefined;
   private storageKey: string | null = null;
 
   private messageSubscribers = new Set<(msgs: ReadonlyArray<ChatMessage>) => void>();
@@ -143,6 +147,7 @@ export class Conversation {
     this.initialMessage = options.initialMessage ?? FALLBACK_INITIAL;
     this.voiceGender = options.voiceGender ?? 'M';
     this.caseId = options.caseId ?? 'unknown';
+    this.sttPrompt = options.sttPrompt;
     this.storageKey = options.storageKey ?? null;
     this.ampBuf = new Uint8Array(1024);
 
@@ -335,20 +340,30 @@ export class Conversation {
 
     try {
       if (!hasPatientBackend()) {
-        throw new Error('Patient backend unavailable.');
+        throw new Error('Hasta ses sunucusuna ulaşılamıyor.');
       }
 
-      this.listeners.onProgress?.('Requesting voice session…');
+      this.listeners.onProgress?.('Ses oturumu isteniyor…');
       const initialLine = this.initialMessage.content;
       const tok = await fetchVoiceToken({
         caseId: this.caseId,
         systemPrompt: this.systemPrompt,
         initialLine,
         gender: this.voiceGender,
+        sttPrompt: this.sttPrompt,
       });
 
       this.listeners.onProgress?.('Ses odasına bağlanılıyor…');
-      const room = new Room({ adaptiveStream: true, dynacast: true });
+      const room = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+        // Browser-side cleanup before the audio ever reaches Whisper.
+        audioCaptureDefaults: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       this.wireRoomEvents(room);
       await room.connect(tok.url, tok.token);
       this.room = room;
@@ -360,10 +375,10 @@ export class Conversation {
       }
 
       // Open the mic. Real-time means it stays open until dispose().
-      this.listeners.onProgress?.('Enabling microphone…');
+      this.listeners.onProgress?.('Mikrofon açılıyor…');
       await room.localParticipant.setMicrophoneEnabled(true);
 
-      this.listeners.onProgress?.('Live.');
+      this.listeners.onProgress?.('Canlı.');
       this.setStatus('ready');
 
       // Always start a fresh encounter with a placeholder subtitle. The

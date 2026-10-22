@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { POLYCLINIC_BED_INDEX } from '../game/store';
 import { getExistingConversation } from '../voice/conversationStore';
 import type { ConversationStatus, SubtitleEvent } from '../voice/conversation';
 
@@ -14,9 +13,11 @@ import type { ConversationStatus, SubtitleEvent } from '../voice/conversation';
 interface Props {
   patientName: string;
   patientLabel: string; // e.g. "34F"
+  /** Conversation cache key: -10 for polyclinic, 0–3 for ER beds. */
+  bedIndex: number;
 }
 
-export function DockedVoicePanel({ patientName, patientLabel }: Props) {
+export function DockedVoicePanel({ patientName, patientLabel, bedIndex }: Props) {
   const [status, setStatus] = useState<ConversationStatus>('uninitialized');
   const [subtitle, setSubtitle] = useState<SubtitleEvent>({ who: 'patient', text: '…' });
 
@@ -25,22 +26,17 @@ export function DockedVoicePanel({ patientName, patientLabel }: Props) {
   // doctor opened Examine before voice connected).
   useEffect(() => {
     let disposed = false;
-    let attempt = 0;
     let stopMessages: (() => void) | null = null;
 
+    setStatus('uninitialized');
+    setSubtitle({ who: 'patient', text: '…' });
+
     const tryAttach = () => {
-      if (disposed) return;
-      const conv = getExistingConversation(POLYCLINIC_BED_INDEX);
-      if (!conv) {
-        if (attempt++ < 20) window.setTimeout(tryAttach, 100);
-        return;
-      }
-      // Pull current state and subscribe to future updates via setListeners.
-      // The conversation already has listeners (the in-scene panel), but
-      // setListeners overwrites — we save what's there, fan-out to both.
-      // Simpler approach: just read getMessages() periodically AND read
-      // status via a tick. The Conversation exposes subscribeMessages —
-      // use that for transcript text, and poll getStatus() each rAF.
+      if (disposed || stopMessages) return;
+      const conv = getExistingConversation(bedIndex);
+      if (!conv) return;
+      // Pull current state and subscribe to future updates. The in-scene
+      // panel owns the conversation; this dock is a read-only second view.
       setStatus(conv.getStatus());
       const msgs = conv.getMessages();
       const last = [...msgs].reverse().find((m) => m.role === 'assistant' || m.role === 'user');
@@ -56,19 +52,23 @@ export function DockedVoicePanel({ patientName, patientLabel }: Props) {
     };
     tryAttach();
 
-    // Cheap status polling — the conv doesn't expose a status subscriber.
+    // Voice connection can take longer than the first render (especially
+    // while Whisper warms up). Poll until the conversation exists, then
+    // keep polling status because Conversation has no status subscriber.
     const tick = window.setInterval(() => {
       if (disposed) return;
-      const conv = getExistingConversation(POLYCLINIC_BED_INDEX);
-      if (conv) setStatus(conv.getStatus());
-    }, 500);
+      const conv = getExistingConversation(bedIndex);
+      if (!conv) return;
+      setStatus(conv.getStatus());
+      tryAttach();
+    }, 250);
 
     return () => {
       disposed = true;
       window.clearInterval(tick);
       stopMessages?.();
     };
-  }, []);
+  }, [bedIndex]);
 
   const firstName = patientName.split(' ')[0];
   const statusLabel =

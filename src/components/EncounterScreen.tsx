@@ -207,6 +207,11 @@ export function EncounterScreen() {
   const state = useGameState();
   const patient = state.polyclinic.patient;
   const mode = state.encounterMode;
+  // Polyclinic uses the -10 sentinel; ER conversations are cached under the
+  // real bed index (0–3). Every voice lookup/dispose must use this same key,
+  // otherwise the exam dock and farewell/dispatch paths silently miss the
+  // live conversation and report "offline".
+  const conversationBedIndex = patient?.bedIndex ?? POLYCLINIC_BED_INDEX;
 
   // Voice is on the moment the encounter mounts — the FloatingVoicePanel
   // calls `getOrCreatePatientConversation()` which kicks off LiveKit
@@ -274,13 +279,13 @@ export function EncounterScreen() {
       e.preventDefault();
       setVoiceActive((prev) => {
         const next = !prev;
-        if (prev && !next) disposePatientConversation(POLYCLINIC_BED_INDEX);
+        if (prev && !next) disposePatientConversation(conversationBedIndex);
         return next;
       });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [examineOpen]);
+  }, [examineOpen, conversationBedIndex]);
 
   // Global E-to-examine — works whether or not pointer-lock is engaged.
   // The Player.tsx handler requires lock; this one fills the gap so the
@@ -306,9 +311,9 @@ export function EncounterScreen() {
   const currentPatientCaseId = patient?.case.id ?? null;
   useEffect(() => {
     return () => {
-      disposePatientConversation(POLYCLINIC_BED_INDEX);
+      disposePatientConversation(conversationBedIndex);
     };
-  }, [currentPatientCaseId]);
+  }, [currentPatientCaseId, conversationBedIndex]);
 
   // Re-arm the voice panel automatically whenever a fresh patient is
   // loaded (e.g. after End consultation → Next patient flow).
@@ -341,19 +346,19 @@ export function EncounterScreen() {
     if (bedIndex === POLYCLINIC_BED_INDEX) {
       setVoiceActive((prev) => {
         const next = !prev;
-        if (prev && !next) disposePatientConversation(POLYCLINIC_BED_INDEX);
+        if (prev && !next) disposePatientConversation(conversationBedIndex);
         return next;
       });
     } else if (bedIndex === null) {
       setVoiceActive((prev) => {
-        if (prev) disposePatientConversation(POLYCLINIC_BED_INDEX);
+        if (prev) disposePatientConversation(conversationBedIndex);
         return false;
       });
     }
   };
 
   const endConsultation = async () => {
-    const conv = getExistingConversation(POLYCLINIC_BED_INDEX);
+    const conv = getExistingConversation(conversationBedIndex);
     if (conv) {
       try {
         await conv.sayFarewell();
@@ -361,10 +366,11 @@ export function EncounterScreen() {
         /* network/voice failure — proceed anyway */
       }
     }
+    if (conv) store.recordTranscript(conv.getMessages());
     if (document.pointerLockElement) document.exitPointerLock();
     interactionBus.setActive(null);
     store.finishPolyclinicCase();
-    disposePatientConversation(POLYCLINIC_BED_INDEX);
+    disposePatientConversation(conversationBedIndex);
     store.setScreen('endConfirm');
   };
 
@@ -497,6 +503,7 @@ export function EncounterScreen() {
           <DockedVoicePanel
             patientName={patient.case.name}
             patientLabel={`${patient.case.age}${patient.case.gender}`}
+            bedIndex={conversationBedIndex}
           />
           <ExamineOverlay
             onClose={() => setExamineOpen(false)}
@@ -508,7 +515,7 @@ export function EncounterScreen() {
               // 2. sayFarewell now polls until the agent's TTS actually
               //    finishes (RPC into voice worker → session.say → wait
               //    for status to leave 'speaking'). No extra padding here.
-              const conv = getExistingConversation(POLYCLINIC_BED_INDEX);
+              const conv = getExistingConversation(conversationBedIndex);
               if (conv) {
                 try {
                   await conv.sayFarewell();
@@ -518,10 +525,11 @@ export function EncounterScreen() {
               }
 
               // 3. Tear down THIS patient's conversation + clear the bed.
+              if (conv) store.recordTranscript(conv.getMessages());
               if (document.pointerLockElement) document.exitPointerLock();
               interactionBus.setActive(null);
               store.finishPolyclinicCase();
-              disposePatientConversation(POLYCLINIC_BED_INDEX);
+              disposePatientConversation(conversationBedIndex);
 
               // 5. Polyclinic: auto-load the next patient from the active
               //    clinic. ER: hand control back to the board, which already

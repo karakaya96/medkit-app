@@ -1,5 +1,5 @@
 import { Conversation, type ConversationListeners } from './conversation';
-import { buildPersona, buildInitialLine, isPediatric, parentGenderFor } from './patientPersona';
+import { buildPersona, buildInitialLine, buildSttPrompt, isPediatric, parentGenderFor } from './patientPersona';
 import type { PatientCase } from '../game/types';
 
 let sharedCtx: AudioContext | null = null;
@@ -63,6 +63,7 @@ export function getOrCreatePatientConversation(
     initialMessage: buildInitialLine(patientCase),
     voiceGender: speakerGender,
     caseId: patientCase.id,
+    sttPrompt: buildSttPrompt(patientCase),
     // Persist per-patient history so refreshing the page or walking away
     // and back doesn't wipe the conversation — the patient remembers you.
     storageKey: `conv_history_${patientCase.id}`,

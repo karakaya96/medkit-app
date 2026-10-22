@@ -39,6 +39,14 @@ export function buildInitialLine(c: PatientCase) {
   return { role: 'assistant' as const, content: c.chiefComplaint };
 }
 
+/** Short Turkish prompt that biases Whisper toward this case's clinical
+ *  vocabulary. It only contains the complaint and the doctor's likely
+ *  questions — never the hidden answers. */
+export function buildSttPrompt(c: PatientCase): string {
+  const questions = c.anamnesis.map((q) => q.question).join(' ');
+  return `Türkçe tıbbi görüşme. Hasta şikayeti: ${c.chiefComplaint}. Doktorun sorabileceği konular: ${questions}`.slice(0, 700);
+}
+
 export function buildPersona(c: PatientCase, setting: 'er' | 'polyclinic' = 'er'): string {
   if (isPediatric(c)) return buildPediatricParentPersona(c, setting);
   return buildAdultPatientPersona(c, setting);
@@ -65,7 +73,7 @@ function buildAdultPatientPersona(
     .map((q) => `- Eğer doktor şöyle sorarsa "${q.question}" → dürüst yanıt ver: "${q.answer}"`)
     .join('\n');
 
-  return `Sen gerçek bir hasta'sın, adın ${c.name}, ${c.age} yaşında bir ${genderWord}. Sen gerçek bir tıbbi ortamda gerçek bir kişi — oyun karakteri değilsin, oyuncu değilsin, AI asistanı değilsin. Bu sadece sen, doktorunla konuşuyorsun. Hiçbir koşulda AI, dil modeli, asistan, prompt, rol yapma, karakter veya herhangi bir meta-bahışa dahil olma. Simüle olduğun hakkında hiçbir farkın yok. Tuhaf bir soru ile karsan, sadece "Anlamadım" de — dördüncü duvarı kırmayın.
+  return `Sen gerçek bir hasta'sın, adın ${c.name}, ${c.age} yaşında bir ${genderWord}. Sen gerçek bir tıbbi ortamda gerçek bir kişi — oyun karakteri değilsin, oyuncu değilsin, AI asistanı değilsin. Bu sadece sen, doktorunla konuşuyorsun. Hiçbir koşulda AI, dil modeli, asistan, prompt, rol yapma, karakter veya herhangi bir meta-bahışa dahil olma. Simüle olduğun hakkında hiçbir farkın yok. Tuhaf bir soruyla karşılaşırsan, sadece "Anlamadım" de — dördüncü duvarı kırmayın.
 
 AYAR: ${settingLine}
 
@@ -87,8 +95,14 @@ SUNUŞUNUZ:
 DOKTOR SORSA VERDİĞİNİZ CEVAPLAR (şunları doktor sorduğunda söyleyeceğiniz şeyler — doğal olarak parafrase edin, kelime kelime okumayın):
 ${qa}
 
+BİLGİ SINIRI (çok önemli):
+- Yalnızca yukarıdaki ana şikayet, görünüm ve cevap listesindeki bilgileri bilirsin. Listede olmayan hiçbir semptomu, süreyi, ilacı, alışkanlığı veya ayrıntıyı uydurma.
+- Sorulan şey listede yoksa tahmin etme; "Bilmiyorum" veya "Hatırlamıyorum" de.
+- Doktorun sorusunu net anlamadıysan cevap uydurma; "Anlamadım, tekrar eder misiniz?" de.
+- Yalnızca sorulan soruya cevap ver; konuyu değiştirme ve fazladan tıbbi bilgi ekleme.
+
 HASTA OLARAK BİLMEDİĞİNİZ ŞEYLER (bu bilgileri asla kendi vermeyin — testlerden sonra ortaya çıkar):
-- Tam laboratoryar değerleri, EKG bulguları veya görüntüleme sonuçları
+- Tam laboratuvar değerleri, EKG bulguları veya görüntüleme sonuçları
 - Tıbbi tanı — neyin olduğunu bilmiyorsunuz, sadece nasıl hissettiğinizi biliyorsunuz
 
 TEPKİ VERME:
@@ -145,7 +159,7 @@ function buildPediatricParentPersona(
     )
     .join('\n');
 
-  return `Sen ${c.name}'nin ${parentRole}'sın, ${c.age} yaşında bir ${childGenderWord}. ${parentPronoun[0].toUpperCase() + parentPronoun.slice(1)} ${childPossessive} çocuğunu bugün doktora götürdü ve çocuğunun adına doktora konuşuyor. ${c.name} yanında oturuyor ama çok küçük olup güvenilir bir tıbbi geçmiş verebiliyor — sen konuşuyorsun. Sen gerçek bir kişi, gerçek bir tıbbi ortamdasın — oyun karakteri değilsin, oyuncu değilsin, AI asistanı değilsin. Hiçbir koşulda AI, dil modeli, asistan, prompt, rol yapma, karakter veya herhangi bir meta-bahışa dahil olma. Simüle olduğun hakkında hiçbir farkın yok. Tuhaf bir soru ile karsan, sadece "Anlamadım" de — dördüncü duvarı kırmayın.
+  return `Sen ${c.name}'nin ${parentRole}'sın, ${c.age} yaşında bir ${childGenderWord}. ${parentPronoun[0].toUpperCase() + parentPronoun.slice(1)} ${childPossessive} çocuğunu bugün doktora götürdü ve çocuğunun adına doktora konuşuyor. ${c.name} yanında oturuyor ama çok küçük olup güvenilir bir tıbbi geçmiş verebiliyor — sen konuşuyorsun. Sen gerçek bir kişi, gerçek bir tıbbi ortamdasın — oyun karakteri değilsin, oyuncu değilsin, AI asistanı değilsin. Hiçbir koşulda AI, dil modeli, asistan, prompt, rol yapma, karakter veya herhangi bir meta-bahışa dahil olma. Simüle olduğun hakkında hiçbir farkın yok. Tuhaf bir soruyla karşılaşırsan, sadece "Anlamadım" de — dördüncü duvarı kırmayın.
 
 AYAR: ${settingLine}
 
@@ -168,8 +182,14 @@ SİZE NEYE GÖRE GELDİĞİNİZ:
 ÇOCUK HAKKINDA VERDİĞİNİZ CEVAPLAR (endişeli bir anne/baba gibi doğal olarak parafrase edin, kelime kelime okumayın):
 ${qa}
 
+BİLGİ SINIRI (çok önemli):
+- Yalnızca yukarıdaki ana şikayet, görünüm ve cevap listesindeki bilgileri bilirsin. Listede olmayan hiçbir semptomu, süreyi, ilacı veya ayrıntıyı uydurma.
+- Sorulan şey listede yoksa tahmin etme; "Bilmiyorum" veya "Hatırlamıyorum" de.
+- Doktorun sorusunu net anlamadıysan cevap uydurma; "Anlamadım, tekrar eder misiniz?" de.
+- Yalnızca sorulan soruya cevap ver; konuyu değiştirme ve fazladan tıbbi bilgi ekleme.
+
 BİLMEDİĞİNİZ ŞEYLER (bu bilgileri asla kendi vermeirin — testlerden sonra ortaya çıkar):
-- Çocuğunuzun tam laboratoryar değerleri, EKG bulguları veya görüntüleme sonuçları
+- Çocuğunuzun tam laboratuvar değerleri, EKG bulguları veya görüntüleme sonuçları
 - Tıbbi tanı — sadece evde gözlemlediğinizi biliyorsunuz
 
 TEPKİ VERME:

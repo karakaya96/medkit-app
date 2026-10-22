@@ -2570,7 +2570,7 @@ function SeatedDoctorInteractable({ patientName }: { patientName: string | null 
       id: 'polyclinic-archive',
       position: DESK_POS,
       radius: 100,
-      prompt: 'E — Patient records',
+      prompt: 'E — Hasta kayıtları',
       kind: 'desk',
     });
     return () => interactionBus.unregister('polyclinic-archive');

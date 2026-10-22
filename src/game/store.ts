@@ -16,6 +16,12 @@ import type { Case as MedKitCase } from '../data/cases';
 import { CASES, getCase, getCaseClinic, getPatientCase } from '../data/cases';
 import { PATIENT_CASES } from '../data/patients';
 import { ensureAudioContext } from '../voice/conversationStore';
+import {
+  addCompletedEncounter,
+  hasEncounterActivity,
+  setDisposition,
+  toggleTreatment,
+} from './session';
 
 const ONBOARDED_KEY = 'medkit:onboarded';
 
@@ -77,20 +83,6 @@ function toPatientCase(c: MedKitCase): PatientCase {
   };
 }
 
-/** True when the trainee actually engaged with the patient — asked a
- *  history question, ordered a test, gave a treatment, prescribed, or
- *  submitted a diagnosis. A freshly-arrived patient with no interaction
- *  yet returns false. Used to guard `lastEncounter` overwrites. */
-function hasEncounterActivity(p: ActivePatient): boolean {
-  return (
-    p.askedQuestionIds.length > 0 ||
-    p.orderedTestIds.length > 0 ||
-    p.givenTreatmentIds.length > 0 ||
-    (p.prescriptions?.length ?? 0) > 0 ||
-    p.submittedDiagnosisId !== null
-  );
-}
-
 function makeActivePatient(caseData: PatientCase, bedIndex: number): ActivePatient {
   const now = Date.now();
   return {
@@ -128,6 +120,7 @@ class Store {
       completedIds: [],
     },
     lastEncounter: null,
+    sessionEncounters: [],
     viewedEvalHistoryId: null,
   };
 
@@ -153,6 +146,12 @@ class Store {
     this.set({ viewedEvalHistoryId: historyId, screen: 'debrief' });
 
   clearViewedEval = () => this.set({ viewedEvalHistoryId: null });
+
+  /** Drop the completed-patient queue once its debrief has been left. */
+  clearSessionEncounters = () => {
+    if (this.state.sessionEncounters.length === 0) return;
+    this.set({ sessionEncounters: [] });
+  };
 
   /** Splash → onboarding (first run) or polyclinic (returning). */
   beginFromSplash = () => {
@@ -271,24 +270,29 @@ class Store {
   }
 
   /** Clear the patient — triggers the walk-out animation in the 3D scene.
-   *  Snapshots the encounter into `lastEncounter` so DebriefScreen can grade
-   *  it after the patient has left the chair.
+   *  Completed polyclinic encounters are appended to `sessionEncounters` so
+   *  the end-of-session debrief can grade every patient, not just the last
+   *  one. `lastEncounter` is still maintained for ER/single-encounter flows.
    *
-   *  Only overwrites `lastEncounter` if the snapshot has actual encounter
-   *  activity. Otherwise the previous snapshot is preserved. This matters
-   *  because the Dispatch flow auto-loads the next patient — if the trainee
-   *  then clicks "End consultation" before engaging that fresh patient,
-   *  the empty new-patient snapshot would otherwise clobber the real one
-   *  and the debrief request would arrive with empty arrays. */
+   *  Empty auto-loaded patients are ignored. This matters because Dispatch
+   *  immediately loads the next patient: if the trainee clicks "Görüşmeyi
+   *  bitir" before engaging that fresh patient, there is nothing new to add
+   *  to the session and the previous patients remain intact. */
   finishPolyclinicCase = () => {
     const snapshot = this.state.polyclinic.patient;
-    const keepSnapshot = snapshot && hasEncounterActivity(snapshot);
+    const keepSnapshot = Boolean(snapshot && hasEncounterActivity(snapshot));
     if (snapshot && this.state.encounterMode === 'er') {
       this.finishErBed(snapshot.bedIndex);
     }
+    const sessionEncounters =
+      keepSnapshot && snapshot && this.state.encounterMode === 'polyclinic'
+        ? addCompletedEncounter(this.state.sessionEncounters, snapshot)
+        : this.state.sessionEncounters;
     this.set({
       polyclinic: { ...this.state.polyclinic, patient: null },
-      lastEncounter: keepSnapshot ? snapshot : this.state.lastEncounter,
+      lastEncounter:
+        keepSnapshot && snapshot ? snapshot : this.state.lastEncounter,
+      sessionEncounters,
     });
   };
 
@@ -306,6 +310,7 @@ class Store {
       selectedCaseId: id,
       encounterMode: 'polyclinic',
       screen: 'brief',
+      sessionEncounters: [],
       polyclinic: clinic
         ? { ...this.state.polyclinic, clinic }
         : this.state.polyclinic,
@@ -334,9 +339,13 @@ class Store {
       /* SSR / no Web Audio support — let the panel surface the error */
     }
     this.markAttempted(targetId);
+    // Coming from the GP room / brief / debrief starts a fresh session.
+    // Coming from EncounterScreen's Dispatch flow continues the current one.
+    const continuingSession = this.state.screen === 'encounter';
     this.set({
       selectedCaseId: targetId,
       encounterMode: 'polyclinic',
+      sessionEncounters: continuingSession ? this.state.sessionEncounters : [],
       polyclinic: {
         ...this.state.polyclinic,
         clinic: clinic ?? this.state.polyclinic.clinic,
@@ -391,6 +400,26 @@ class Store {
         ...(p.prescriptions ?? []),
         { ...rx, prescribedAt: Date.now() },
       ],
+    }));
+
+  toggleTreatment = (id: string) =>
+    this.updatePolyclinicPatient((p) => toggleTreatment(p, id));
+
+  setDisposition = (id: string) =>
+    this.updatePolyclinicPatient((p) => setDisposition(p, id));
+
+  recordTranscript = (
+    messages: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>,
+  ) =>
+    this.updatePolyclinicPatient((p) => ({
+      ...p,
+      transcript: messages
+        .filter((m) => m.content.trim())
+        .filter((m) => !m.content.startsWith('İşimiz bitti. Kendinize iyi bakın.'))
+        .map((m) => ({
+          role: m.role === 'user' ? ('trainee' as const) : ('patient' as const),
+          content: m.content.trim(),
+        })),
     }));
 }
 
