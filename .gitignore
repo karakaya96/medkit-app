@@ -52,3 +52,6 @@ tsconfig.tsbuildinfo
 .vibe/
 .windsurf/
 .zencoder/
+
+# graphify (yerel kod grafiği)
+graphify-out/
