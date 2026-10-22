@@ -208,10 +208,13 @@ from fastapi import Request
 from fastapi.responses import StreamingResponse
 
 try:
-    from anthropic import Anthropic, AsyncAnthropic  # type: ignore
+    from anthropic import Anthropic as _Anthropic, AsyncAnthropic as _AsyncAnthropic  # type: ignore
+    from openai import OpenAI, AsyncOpenAI  # type: ignore
     _HAS_ANTHROPIC = True
+    _HAS_OPENAI = True
 except ImportError:  # pragma: no cover
     _HAS_ANTHROPIC = False
+    _HAS_OPENAI = False
 
 # Structured logger for the Managed Agents proxy. Uvicorn captures stdlib
 # logging so these land in the same stream as its own access log.
@@ -243,7 +246,7 @@ ENV_NAME = "medkit-attending-env"
 # clinical-reasoning model — see CLAUDE.md's "Model routing" table. This
 # is a separate code path from the Managed Agent (AGENT_MODEL); the
 # agent observes the whole encounter, triage classifies one arrival.
-TRIAGE_MODEL = "claude-opus-4-7"
+TRIAGE_MODEL = os.environ.get("TRIAGE_MODEL", "nvidia/nemotron-3-ultra:free")
 TRIAGE_MAX_TOKENS = 512
 
 MEDKIT_ATTENDING_SYSTEM_PROMPT = (
@@ -663,8 +666,10 @@ MEDKIT_CUSTOM_TOOLS: list[dict] = [
     },
 ]
 
-_anthropic_client: Optional["Anthropic"] = None
-_anthropic_async_client: Optional["AsyncAnthropic"] = None
+_anthropic_client: Optional["_Anthropic"] = None
+_anthropic_async_client: Optional["_AsyncAnthropic"] = None
+_openai_client: Optional["OpenAI"] = None
+_openai_async_client: Optional["AsyncOpenAI"] = None
 
 
 def _ensure_anthropic_available() -> None:
@@ -678,30 +683,73 @@ def _ensure_anthropic_available() -> None:
         )
 
 
-def _require_api_key() -> str:
-    key = os.environ.get("ANTHROPIC_API_KEY")
+def _ensure_openai_available() -> None:
+    if not _HAS_OPENAI:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "openai package not installed. Run `pip install "
+                "'openai>=1.0.0'` in the backend venv."
+            ),
+        )
+
+
+def _require_openai_key() -> str:
+    key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
         raise HTTPException(
             status_code=500,
-            detail="ANTHROPIC_API_KEY is not set server-side.",
+            detail="OPENROUTER_API_KEY is not set server-side (required for patient persona + triage).",
         )
     return key
 
 
-def get_anthropic_client() -> "Anthropic":
+def _require_anthropic_key() -> str:
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY is not set server-side (required for Managed Agents grading).",
+        )
+    return key
+
+
+def get_anthropic_client() -> "_Anthropic":
     global _anthropic_client
     _ensure_anthropic_available()
     if _anthropic_client is None:
-        _anthropic_client = Anthropic(api_key=_require_api_key())
+        _anthropic_client = _Anthropic(api_key=_require_anthropic_key())
     return _anthropic_client
 
 
-def get_async_anthropic_client() -> "AsyncAnthropic":
+def get_async_anthropic_client() -> "_AsyncAnthropic":
     global _anthropic_async_client
     _ensure_anthropic_available()
     if _anthropic_async_client is None:
-        _anthropic_async_client = AsyncAnthropic(api_key=_require_api_key())
+        _anthropic_async_client = _AsyncAnthropic(api_key=_require_anthropic_key())
     return _anthropic_async_client
+
+
+def get_openai_client() -> "OpenAI":
+    global _openai_client
+    _ensure_openai_available()
+    if _openai_client is None:
+        _openai_client = OpenAI(
+            api_key=_require_openai_key(),
+            base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        )
+    return _openai_client
+
+
+def get_async_openai_client() -> "AsyncOpenAI":
+    global _openai_async_client
+    _ensure_openai_available()
+    if _openai_async_client is None:
+        _openai_async_client = AsyncOpenAI(
+            api_key=_require_openai_key(),
+            base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        )
+    return _openai_async_client
 
 
 class BootstrapResponse(BaseModel):
@@ -1299,13 +1347,66 @@ def run_triage_reasoning(
     )
 
 
+def run_triage_reasoning_openai(
+    client: "OpenAI",
+    req: TriageClassifyRequest,
+) -> TriageClassifyResponse:
+    """OpenAI (OpenRouter) uyumlu ESI sınıflandırması. Anthropic messages.create
+    yerine OpenAI chat.completions.create kullanır."""
+    response = client.chat.completions.create(  # type: ignore[attr-defined]
+        model=TRIAGE_MODEL,
+        max_tokens=TRIAGE_MAX_TOKENS,
+        messages=[
+            {"role": "system", "content": ESI_TRIAGE_SYSTEM_PROMPT},
+            {"role": "user", "content": _format_triage_user_message(req)},
+        ],
+    )
+    raw = (response.choices[0].message.content or "").strip()
+    if not raw:
+        raise HTTPException(
+            status_code=502,
+            detail="triage model returned empty response",
+        )
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        if raw.lower().startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    try:
+        parsed = json.loads(raw)
+    except ValueError as e:
+        _agent_log.warning("triage: malformed JSON from model: %s", raw[:200])
+        raise HTTPException(
+            status_code=502,
+            detail=f"triage model returned malformed JSON: {e}",
+        )
+    esi = str(parsed.get("esi_level", "")).strip()
+    if esi not in ALLOWED_ESI_LEVELS:
+        raise HTTPException(
+            status_code=502,
+            detail=f"triage model returned invalid esi_level: {esi!r}",
+        )
+    rationale = str(parsed.get("rationale", "")).strip()
+    red_flags_raw = parsed.get("red_flags", [])
+    red_flags = [str(x) for x in red_flags_raw] if isinstance(red_flags_raw, list) else []
+    _agent_log.info(
+        "triage: patient=%s esi=%s flags=%d",
+        req.patient_id, esi, len(red_flags),
+    )
+    return TriageClassifyResponse(
+        patient_id=req.patient_id,
+        esi_level=esi,
+        rationale=rationale,
+        red_flags=red_flags,
+        model=TRIAGE_MODEL,
+    )
+
+
 @app.post("/agent/triage/classify", response_model=TriageClassifyResponse)
 def triage_classify(req: TriageClassifyRequest):
-    """Opus 4.7 one-shot ESI classification for ER arrivals. Separate
-    from the Managed Agent event stream — this is a stateless direct
-    inference endpoint."""
-    client = get_anthropic_client()
-    return run_triage_reasoning(client, req)
+    """OpenRouter (Nemotron) ile ESI sınıflandırması. OpenAI uyumlu API."""
+    client = get_openai_client()
+    return run_triage_reasoning_openai(client, req)
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -1319,7 +1420,7 @@ def triage_classify(req: TriageClassifyRequest):
 # `{"done": true}`. The Haiku response is short (max 256 tokens) so we
 # skip the keepalive logic the long-lived agent stream needs.
 
-PATIENT_MODEL = "claude-haiku-4-5"
+PATIENT_MODEL = os.environ.get("PATIENT_MODEL", "nvidia/nemotron-3-ultra:free")
 PATIENT_MAX_TOKENS = 256
 
 
@@ -1335,35 +1436,24 @@ class PatientStreamRequest(BaseModel):
 
 @app.post("/agent/patient/stream")
 async def patient_stream(req: PatientStreamRequest):
-    client = get_async_anthropic_client()
+    client = get_async_openai_client()
 
     async def generator():
         try:
-            async with client.messages.stream(  # type: ignore[attr-defined]
+            stream = await client.chat.completions.create(  # type: ignore[attr-defined]
                 model=PATIENT_MODEL,
                 max_tokens=PATIENT_MAX_TOKENS,
-                system=[
-                    {
-                        "type": "text",
-                        "text": req.system,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
                 messages=[
+                    {"role": "system", "content": req.system},
+                ] + [
                     {"role": m.role, "content": m.content} for m in req.messages
                 ],
-            ) as stream:
-                async for event in stream:
-                    etype = getattr(event, "type", None)
-                    if etype != "content_block_delta":
-                        continue
-                    delta = getattr(event, "delta", None)
-                    if getattr(delta, "type", None) != "text_delta":
-                        continue
-                    text = getattr(delta, "text", "")
-                    if not text:
-                        continue
-                    yield "data: " + json.dumps({"text": text}) + "\n\n"
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    yield "data: " + json.dumps({"text": delta.content}) + "\n\n"
             yield "data: " + json.dumps({"done": True}) + "\n\n"
         except asyncio.CancelledError:
             raise

@@ -35,11 +35,11 @@ import {
 import { hasClaudeKey, streamClaude, type ChatMessage } from './claude';
 
 const FALLBACK_PERSONA =
-  'You are a patient speaking to a doctor. Keep replies to 1–2 short spoken sentences. ' +
-  'Output spoken dialogue only — no stage directions, no asterisks, no brackets.';
+  'Sen bir hasta\'sın ve bir doktora konuşuyorsun. Yanıtları 1-2 kısa konuşma cümlesiyle sınırla. ' +
+  'Sadece söylenebilen diyaloğu çıkart — sahnelik talimat yok, yıldız yok, köşeli parantez yok.';
 const FALLBACK_INITIAL: { role: 'assistant'; content: string } = {
   role: 'assistant',
-  content: 'Hi doc.',
+  content: 'Merhaba doktora.',
 };
 
 export type ConversationStatus =
@@ -69,10 +69,10 @@ export interface ConversationListeners {
 
 function detectEmotion(text: string): PatientEmotion {
   const t = text.toLowerCase();
-  if (/\b(hurts?|pain(?:ful)?|ache|aching|ow|ouch|sore|burn(?:s|ing)?|sharp|throb|stab|rip(?:ping)?|tear(?:ing)?|crush(?:ing)?|killing me|agony|can'?t breathe|chest)\b/.test(t)) return 'pain';
-  if (/\b(scared|afraid|frightened|terrified|worr(?:ied|y)|nervous|anxious|help me|please help|dying|die|gonna die|save me)\b/.test(t)) return 'fear';
-  if (/\b(okay|i'?m okay|fine|better|good now|thanks|thank you|relieved?|easier|breathing better|no more pain)\b/.test(t)) return 'relief';
-  if (/\b(i don'?t (?:know|understand)|not sure|confused|what does that mean|what do you mean|sorry what)\b/.test(t)) return 'confused';
+  if (/ağrı|acı|ağrılı|ağrıyor|keser|yakıcı|sıcak|sıkmak|şiddetli|şişik|şişkin|canını sıkan|nefes|nefes alamıyorum|nefes darlığı|göğüs|göğsüm|göğsün|omuz|sırt|başım|başım ağrıyor|baş dönmesi|baygın|killing me|can't breathe|chest/.test(t)) return 'pain';
+  if (/korku|korkuyorum|korkum|endişe|endişeli|panik|korkutucu|korkunç|scared|afraid|frightened|terrified|dying|die|save me|help me/.test(t)) return 'fear';
+  if (/iyi|iyiyim|iyi oldum|rahatladım|rahatlama|teşekkür|sağol|teşekkür ederim|iyileşiyor|iyi hissediyorum|okay|fine|better|good now|thanks|thank you|relieved|breathing better|no more pain/.test(t)) return 'relief';
+  if (/anlamadım|anlamıyorum|kafa karışıklığı|kafa karıştı|kafam karıştı|ne diyorsun|ne demek|ne oluyor|emin değilim|bilmiyorum|nasıl|ne olacak|i don't|don't understand|not sure|confused|what does that mean|what do you mean|sorry what/.test(t)) return 'confused';
   return 'neutral';
 }
 
@@ -468,10 +468,10 @@ export class Conversation {
     // Voice not connected — fall back to the old text-only flow so the
     // subtitle still shows a goodbye line.
     const farewellPrompt =
-      "Okay, we're all done. Take care of yourself. Goodbye. " +
-      "[This is your final reply. Say a short goodbye — thanks, okay, bye — " +
-      "and NOTHING ELSE. Do NOT ask any questions. No follow-ups. " +
-      "One or two short sentences, then silence.]";
+      "İşimiz bitti. Kendinize iyi bakın. Hoşça kalın. " +
+      "[Bu son yanıtınız. Kısa bir vedala — teşekkürler, tamam, hoşça kalın — " +
+      "ve BAŞKA BİRŞEY YOK. Soru sormayın. Takip sorusu yok. " +
+      "Bir veya iki kısa cümle, ardından sessizlik.]";
     this.messages.push({ role: 'user', content: farewellPrompt });
     this.emitMessages();
 
