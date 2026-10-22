@@ -14,6 +14,8 @@ POST /voice/token    → mint LiveKit JWT for a patient room
 
 from __future__ import annotations
 
+import hmac
+import ipaddress
 import os
 import threading
 from pathlib import Path
@@ -66,12 +68,6 @@ ALLOWED_ORIGINS = [
     "http://localhost:5174",
     "http://127.0.0.1:5174",
 ]
-DEV_ORIGINS = {
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-}
 
 # Per-IP rate limit caps even authenticated abuse. SSE streams count as one
 # request, so 120/min leaves plenty of headroom for legitimate use.
@@ -86,6 +82,26 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 #   1. Auth          (innermost, added first)
 #   2. SlowAPI       (rate limit)
 #   3. CORS          (outermost, handles OPTIONS preflight before auth)
+def _is_loopback_client(request: Request) -> bool:
+    """True only for connections that actually originate on this machine.
+
+    Local development bypasses the shared secret because the Vite proxy
+    (``127.0.0.1:8787``) does not inject it. This is deliberately based on
+    the TCP peer address — NOT on Origin/Referer/X-Forwarded-For, which
+    any client can forge.
+    """
+    client = request.client
+    if client is None:
+        return False
+    host = client.host
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 @app.middleware("http")
 async def require_shared_secret(request: Request, call_next):
     path = request.url.path
@@ -93,16 +109,10 @@ async def require_shared_secret(request: Request, call_next):
     # but bypass OPTIONS defensively.
     if path == "/health" or request.method == "OPTIONS":
         return await call_next(request)
-    origin = request.headers.get("origin", "")
-    if origin in DEV_ORIGINS:
+    if _is_loopback_client(request):
         return await call_next(request)
-    # Same-origin GETs (incl. EventSource) don't send Origin per the Fetch
-    # spec, but they DO send Referer. Trust dev-origin Referer in lieu of
-    # Origin so SSE streams from localhost work without an explicit secret.
-    referer = request.headers.get("referer", "")
-    if any(referer.startswith(o + "/") for o in DEV_ORIGINS):
-        return await call_next(request)
-    if SHARED_SECRET and request.headers.get("x-medkit-auth") == SHARED_SECRET:
+    supplied = request.headers.get("x-medkit-auth", "")
+    if SHARED_SECRET and hmac.compare_digest(supplied, SHARED_SECRET):
         return await call_next(request)
     return JSONResponse({"detail": "unauthorized"}, status_code=401)
 
@@ -135,15 +145,19 @@ def health():
         "voice": {
             "transport": "livekit",
             "livekit_configured": livekit_ok,
-            "deepgram_configured": bool(os.environ.get("DEEPGRAM_API_KEY")),
-            "cartesia_configured": bool(os.environ.get("CARTESIA_API_KEY")),
+            "stt": "faster-whisper",
+            "tts": "edge-tts",
+            "llm_provider": os.environ.get("LLM_PROVIDER", "openrouter"),
+            "llm_configured": bool(
+                os.environ.get("OPENROUTER_API_KEY")
+                or os.environ.get("NVIDIA_API_KEY")
+            ),
+            "whisper_model": os.environ.get("WHISPER_MODEL", "base"),
         },
         "agent": {
             "anthropic_sdk_installed": _HAS_ANTHROPIC,
             "api_key_configured": has_key,
             "bootstrapped": bootstrapped,
-            "agent_id": agent_id,
-            "environment_id": env_id,
             "model": AGENT_MODEL if _HAS_ANTHROPIC else None,
         },
     }
@@ -209,11 +223,14 @@ from fastapi.responses import StreamingResponse
 
 try:
     from anthropic import Anthropic as _Anthropic, AsyncAnthropic as _AsyncAnthropic  # type: ignore
-    from openai import OpenAI, AsyncOpenAI  # type: ignore
     _HAS_ANTHROPIC = True
-    _HAS_OPENAI = True
 except ImportError:  # pragma: no cover
     _HAS_ANTHROPIC = False
+
+try:
+    from openai import OpenAI, AsyncOpenAI  # type: ignore
+    _HAS_OPENAI = True
+except ImportError:  # pragma: no cover
     _HAS_OPENAI = False
 
 # Structured logger for the Managed Agents proxy. Uvicorn captures stdlib
@@ -716,24 +733,24 @@ def _require_anthropic_key() -> str:
 
 def get_anthropic_client() -> "_Anthropic":
     global _anthropic_client
-    _ensure_anthropic_available()
     if _anthropic_client is None:
+        _ensure_anthropic_available()
         _anthropic_client = _Anthropic(api_key=_require_anthropic_key())
     return _anthropic_client
 
 
 def get_async_anthropic_client() -> "_AsyncAnthropic":
     global _anthropic_async_client
-    _ensure_anthropic_available()
     if _anthropic_async_client is None:
+        _ensure_anthropic_available()
         _anthropic_async_client = _AsyncAnthropic(api_key=_require_anthropic_key())
     return _anthropic_async_client
 
 
 def get_openai_client() -> "OpenAI":
     global _openai_client
-    _ensure_openai_available()
     if _openai_client is None:
+        _ensure_openai_available()
         _openai_client = OpenAI(
             api_key=_require_openai_key(),
             base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
@@ -743,8 +760,8 @@ def get_openai_client() -> "OpenAI":
 
 def get_async_openai_client() -> "AsyncOpenAI":
     global _openai_async_client
-    _ensure_openai_available()
     if _openai_async_client is None:
+        _ensure_openai_available()
         _openai_async_client = AsyncOpenAI(
             api_key=_require_openai_key(),
             base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),

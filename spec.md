@@ -5,6 +5,8 @@
 
 **Event:** Built with Opus 4.7 hackathon. Submission due Sunday 2026-04-26, 8 p.m. EST.
 
+> **Implementation update (2026-10-22):** to run the demo at zero marginal cost, patient voice, triage, and text chat now use Nemotron on OpenRouter with local faster-whisper STT and edge-tts TTS. The `medkit-attending` Managed Agent grading path remains on Anthropic Opus 4.7. Model IDs are configured via `PATIENT_MODEL` / `TRIAGE_MODEL`; see `README.md`.
+
 ---
 
 ## What wins prizes here

@@ -1,2 +1,10 @@
-livekit-agents[deepgram,cartesia,anthropic,silero,turn-detector]~=1.0
+# LiveKit voice worker. STT/TTS run locally (faster-whisper + edge-tts),
+# the LLM is reached through the OpenAI-compatible OpenRouter/NVIDIA API.
+#
+# System dependency: ffmpeg must be on PATH (used to decode edge-tts MP3
+# into 16 kHz PCM for LiveKit).
+livekit-agents[openai,silero]~=1.0
+faster-whisper>=1.0.0
+edge-tts>=6.1.0
 python-dotenv~=1.0
+numpy>=1.26

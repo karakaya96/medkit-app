@@ -52,7 +52,7 @@ Each custom tool has a `permission` of `auto` or `confirm` in `src/agents/custom
 
 ## Direct-inference triage endpoint
 
-`POST /agent/triage/classify` is a SEPARATE Opus 4.7 inference — not Managed Agents. Called at ER arrival for a one-shot ESI classification before the observer agent has enough context to form an opinion. System prompt inlines the ESI rules from `.claude/skills/medkit-triage-logic.md`; keep the two in sync. Pure function `run_triage_reasoning` is unit-tested with a mocked client (`backend/tests/test_triage.py`) — don't add a second model call without mirroring those tests.
+`POST /agent/triage/classify` is a SEPARATE inference — not Managed Agents — using the OpenAI-compatible `TRIAGE_MODEL` (Nemotron via OpenRouter by default). Called at ER arrival for a one-shot ESI classification before the observer agent has enough context to form an opinion. The ESI rules in the system prompt mirror `.claude/skills/medkit-triage-logic.md`; keep the two in sync. Pure function `run_triage_reasoning_openai` is unit-tested with a mocked OpenAI client (`backend/tests/test_triage.py`) — don't add a second model call without mirroring those tests.
 
 ## Modifying the system prompt
 

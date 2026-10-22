@@ -28,6 +28,9 @@ from pathlib import Path
 # call Anthropic in these tests.
 os.environ["EHR_API_TOKEN"] = "vault-secret-test-token-93af2d"
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-api03-test-dummy")
+_SHARED_SECRET = "test-shared-secret-7fd1"
+os.environ["BACKEND_SHARED_SECRET"] = _SHARED_SECRET
+_AUTH_HEADERS = {"x-medkit-auth": _SHARED_SECRET}
 
 # Make ``backend/`` importable whether unittest is launched from the
 # repo root or from inside ``backend/``.
@@ -45,7 +48,7 @@ _VAULT_TOKEN = os.environ["EHR_API_TOKEN"]
 
 class VaultEndpointTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.client = TestClient(server.app)
+        self.client = TestClient(server.app, headers=_AUTH_HEADERS)
 
     # ─── happy path ──────────────────────────────────────────────
     def test_known_patient_returns_record(self) -> None:
@@ -168,6 +171,56 @@ class VaultEndpointTests(unittest.TestCase):
             "token", str(tool["input_schema"]).lower(),
             "input schema must not ask the agent for a token",
         )
+
+
+class AuthMiddlewareTests(unittest.TestCase):
+    """The shared-secret gate must not be bypassable by client-controlled
+    headers (Origin/Referer were previously trusted — that was a real hole)."""
+
+    def setUp(self) -> None:
+        self.client = TestClient(server.app)
+        self.payload = {"patient_id": "poly-001"}
+        self.url = "/agent/vault/ehr/lookup"
+
+    def test_missing_secret_is_rejected(self) -> None:
+        resp = self.client.post(self.url, json=self.payload)
+        self.assertEqual(resp.status_code, 401)
+
+    def test_spoofed_dev_origin_does_not_bypass(self) -> None:
+        resp = self.client.post(
+            self.url,
+            json=self.payload,
+            headers={"origin": "http://localhost:5173"},
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_spoofed_dev_referer_does_not_bypass(self) -> None:
+        resp = self.client.post(
+            self.url,
+            json=self.payload,
+            headers={"referer": "http://localhost:5173/"},
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_wrong_secret_is_rejected(self) -> None:
+        resp = self.client.post(
+            self.url,
+            json=self.payload,
+            headers={"x-medkit-auth": "not-the-secret"},
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_valid_secret_is_accepted(self) -> None:
+        resp = self.client.post(self.url, json=self.payload, headers=_AUTH_HEADERS)
+        self.assertEqual(resp.status_code, 200, resp.text)
+
+    def test_health_stays_public_without_leaking_ids(self) -> None:
+        resp = self.client.get("/health")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body["ok"])
+        self.assertNotIn("agent_id", body["agent"])
+        self.assertNotIn("environment_id", body["agent"])
 
 
 class _CapturingHandler(logging.Handler):

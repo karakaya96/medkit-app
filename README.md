@@ -22,9 +22,10 @@ Built in three days for the Opus 4.7 hackathon by a medical-doctor-turned-softwa
 |---|---|
 | Frontend | React 18 + TypeScript + Vite, Three.js (`@react-three/fiber`, `@react-three/drei`) |
 | Voice transport | LiveKit Cloud (WebRTC) via `livekit-client` |
-| Voice worker | Python `livekit-agents` — Deepgram Nova-3 STT → Claude Haiku 4.5 → Cartesia Sonic-2 TTS |
-| HTTP backend | FastAPI on `127.0.0.1:8787` — Managed Agents proxy + LiveKit JWT mint |
+| Voice worker | Python `livekit-agents` — faster-whisper STT → Nemotron via OpenRouter (NVIDIA fallback) → edge-tts (Turkish voices) |
+| HTTP backend | FastAPI on `127.0.0.1:8787` — Managed Agents proxy + OpenRouter patient/triage paths + LiveKit JWT mint |
 | Attending grader | Claude **Opus 4.7** as a Managed Agent (`medkit-attending`) |
+| Triage classifier | Nemotron on OpenRouter (OpenAI-compatible), configurable via `TRIAGE_MODEL` |
 | State | Single `Store` class with `useSyncExternalStore` (no Redux/Zustand) |
 
 Two flows:
@@ -37,6 +38,7 @@ Two flows:
 
 - **Node.js 22+** (TS files are run natively via type-stripping)
 - **Python 3.11+**
+- **ffmpeg** on `PATH` (edge-tts MP3 → 16 kHz PCM conversion)
 - A modern browser with mic permission (Chrome/Edge recommended for WebRTC)
 
 ---
@@ -47,10 +49,12 @@ All keys are server-side only — the browser never sees them. Get one of each:
 
 | Service | What it does | Where to get it | Free tier? |
 |---|---|---|---|
-| **Anthropic** | Powers the attending grader (Opus 4.7) and patient voice persona (Haiku 4.5) | https://console.anthropic.com → API Keys | Pay-as-you-go, no free tier |
+| **Anthropic** | Powers the attending grader (`medkit-attending` Managed Agent, Opus 4.7) | https://console.anthropic.com → API Keys | Pay-as-you-go, no free tier |
+| **OpenRouter** | Patient persona + triage + voice-worker LLM (Nemotron) | https://openrouter.ai → Keys | Yes — free models available |
+| **NVIDIA** (optional) | Fallback LLM provider for the voice worker (`LLM_PROVIDER=nvidia`) | https://build.nvidia.com → API Keys | Yes — free credits |
 | **LiveKit Cloud** | Real-time WebRTC transport between browser ↔ voice worker | https://cloud.livekit.io → create project → Settings → Keys (gives `URL`, `API Key`, `API Secret`) | Yes — generous free tier |
-| **Deepgram** | Streaming speech-to-text inside the voice worker | https://console.deepgram.com → API Keys | Yes — $200 free credit |
-| **Cartesia** | Streaming text-to-speech inside the voice worker | https://play.cartesia.ai → API Keys | Yes — free credit on signup |
+
+STT (faster-whisper) and TTS (edge-tts) run locally — no STT/TTS API key is needed, but **ffmpeg** must be installed for TTS decoding.
 
 ---
 
@@ -69,16 +73,16 @@ The FastAPI server and the LiveKit voice worker have very different dependency t
 ```bash
 cd backend
 
-# FastAPI server — small (FastAPI + Anthropic + livekit-api)
+# FastAPI server — FastAPI + Anthropic + OpenAI-compatible client + livekit-api
 python -m venv .venv
-.venv/Scripts/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements.txt
 
-# Voice worker — larger (livekit-agents + Deepgram/Cartesia/Silero plugins)
+# Voice worker — livekit-agents + faster-whisper + edge-tts
 python -m venv .venv-voice
-.venv-voice/Scripts/python -m pip install -r voice_agent_requirements.txt
+.venv-voice/bin/python -m pip install -r voice_agent_requirements.txt
 ```
 
-> On macOS/Linux replace `.venv/Scripts/python` with `.venv/bin/python`.
+> On Windows replace `.venv/bin/python` with `.venv/Scripts/python`.
 
 ### 3. Configure secrets
 
@@ -89,12 +93,33 @@ cp backend/.env.example backend/.env.local
 Fill in `backend/.env.local`:
 
 ```env
+# Managed Agent grading (Anthropic)
 ANTHROPIC_API_KEY=sk-ant-...
+
+# Patient persona + triage + voice LLM
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+# Optional fallback for the voice worker:
+NVIDIA_API_KEY=
+LLM_PROVIDER=openrouter
+
+# Patient/triage model IDs (OpenAI-compatible)
+PATIENT_MODEL=nvidia/nemotron-3-ultra:free
+TRIAGE_MODEL=nvidia/nemotron-3-ultra:free
+
+# Local voice stack
+WHISPER_MODEL=base
+
+# LiveKit Cloud
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=APIxxxx
 LIVEKIT_API_SECRET=...
-DEEPGRAM_API_KEY=...
-CARTESIA_API_KEY=...
+
+# Backend protection (Vercel edge → Render)
+BACKEND_SHARED_SECRET=
+
+# Credential vault demo
+EHR_API_TOKEN=
 
 # Leave these blank on first run — see "Bootstrap the Managed Agent" below
 MEDKIT_AGENT_ID=
@@ -106,7 +131,7 @@ MEDKIT_ENV_ID=
 Start the FastAPI server, then create the persistent attending agent:
 
 ```bash
-backend/.venv/Scripts/python backend/server.py
+backend/.venv/bin/python backend/server.py
 # In another terminal:
 curl -X POST http://127.0.0.1:8787/agent/bootstrap
 ```
@@ -123,11 +148,11 @@ npm run dev
 # Vite serves http://localhost:5173
 
 # Terminal 2 — FastAPI backend
-backend/.venv/Scripts/python backend/server.py
+backend/.venv/bin/python backend/server.py
 # Listens on http://127.0.0.1:8787 (proxied by Vite at /agent/* and /voice/*)
 
 # Terminal 3 — LiveKit voice worker
-backend/.venv-voice/Scripts/python backend/voice_agent.py dev
+backend/.venv-voice/bin/python backend/voice_agent.py dev
 # Logs "registered worker" once connected to LiveKit Cloud
 ```
 
@@ -160,7 +185,7 @@ src/
   agents/             # Managed Agent client + custom-tool UI renderer
 backend/
   server.py           # FastAPI: Managed Agents proxy + /voice/token
-  voice_agent.py      # LiveKit Agents worker (Deepgram → Haiku → Cartesia)
+  voice_agent.py      # LiveKit Agents worker (faster-whisper → Nemotron → edge-tts)
 .claude/skills/       # Authoring skills (patient generator, rubric author, guideline curator, ...)
 scripts/verify/       # Deterministic data-integrity checks
 ```
@@ -171,19 +196,21 @@ scripts/verify/       # Deterministic data-integrity checks
 
 | Call | Model | Why |
 |---|---|---|
-| Patient voice persona | Haiku 4.5 | Fast, cheap, good enough for in-character reply |
-| `medkit-attending` grading | **Opus 4.7** | Clinical reasoning, precision matters |
+| Patient voice persona | Nemotron via OpenRouter (`PATIENT_MODEL`) | Fast and free; good enough for in-character reply |
+| Triage classifier | Nemotron via OpenRouter (`TRIAGE_MODEL`) | One-shot ESI classification; overridable |
+| `medkit-attending` grading | **Claude Opus 4.7** | Clinical reasoning, precision matters |
 
 ---
 
 ## Notes
 
 - **Group policy on Windows:** scripts call `node node_modules/<pkg>/bin/<entry>.js` instead of the `.bin` shims because some corporate machines block `.exe` wrappers under `node_modules/`. Keep this pattern when adding new scripts.
-- **Prompt caching is on** in the patient-persona path — set `cache_control: { type: 'ephemeral' }` on system prompts when you add new Claude calls.
+- **Local voice stack:** faster-whisper downloads its model on first use and runs on CPU; `WHISPER_MODEL=base` is the default. edge-tts needs `ffmpeg` on `PATH`.
+- **Free-tier LLM routing:** the patient/triage/voice paths use OpenRouter's OpenAI-compatible API. Swap `PATIENT_MODEL` / `TRIAGE_MODEL` / `LLM_PROVIDER` in `.env.local` without code changes.
 - **Out of scope:** multi-agent handoffs, persistent user accounts, anything claiming clinical accuracy.
 
 ---
 
 ## License
 
-Private — hackathon submission. Not licensed for redistribution.
+Public for review. No open-source license is granted — do not redistribute without permission from the author.

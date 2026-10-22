@@ -1,18 +1,19 @@
 """Unit tests for the direct-inference triage classifier.
 
-These tests mock the Anthropic SDK so we can validate the code path
-without hitting the API (and without needing a real key). Assertions:
+The endpoint now uses the OpenAI-compatible OpenRouter/NVIDIA path
+(``run_triage_reasoning_openai``). These tests mock the OpenAI SDK so we
+can validate the code path without hitting a network or needing a real
+key. Assertions:
 
-    1. The Anthropic client is called with model=claude-opus-4-7.
-    2. The ESI-rules system prompt is passed in the 'system' field.
+    1. The configured model (``server.TRIAGE_MODEL``) is requested.
+    2. The ESI-rules system prompt is passed in the system message.
     3. Well-formed JSON responses parse into a TriageClassifyResponse.
     4. Malformed / fenced JSON is parsed when possible, otherwise 502.
-    5. Invalid esi_level values are rejected as 502 rather than silently
-       returned to the caller.
+    5. Invalid esi_level values are rejected as 502.
 
 Run with:
 
-    backend/.venv/Scripts/python.exe -m unittest backend.tests.test_triage
+    backend/.venv/bin/python -m unittest backend.tests.test_triage
 """
 
 from __future__ import annotations
@@ -26,7 +27,11 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-api03-test-dummy")
-os.environ.setdefault("EHR_API_TOKEN", "test-token-not-relevant-here")
+os.environ.setdefault("OPENROUTER_API_KEY", "sk-or-v1-test-dummy")
+os.environ.setdefault("TRIAGE_MODEL", "test-triage-model")
+_SHARED_SECRET = "test-shared-secret-7fd1"
+os.environ["BACKEND_SHARED_SECRET"] = _SHARED_SECRET
+_AUTH_HEADERS = {"x-medkit-auth": _SHARED_SECRET}
 
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(_BACKEND_DIR) not in sys.path:
@@ -38,14 +43,12 @@ from fastapi.testclient import TestClient  # noqa: E402
 import server  # noqa: E402
 
 
-def _fake_message(text: str) -> SimpleNamespace:
-    """Build a minimal stand-in for anthropic.types.Message."""
-    return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)])
-
-
 def _fake_client(return_text: str) -> MagicMock:
+    """Build a minimal stand-in for the OpenAI client response shape."""
     client = MagicMock()
-    client.messages.create.return_value = _fake_message(return_text)
+    client.chat.completions.create.return_value = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=return_text))]
+    )
     return client
 
 
@@ -69,17 +72,18 @@ SAMPLE_REQUEST = server.TriageClassifyRequest(
 
 class TriageReasoningTests(unittest.TestCase):
     # ─── model routing ───────────────────────────────────────────
-    def test_uses_opus_4_7(self) -> None:
+    def test_uses_configured_model(self) -> None:
         client = _fake_client(WELL_FORMED_JSON)
-        server.run_triage_reasoning(client, SAMPLE_REQUEST)
-        kwargs = client.messages.create.call_args.kwargs
-        self.assertEqual(kwargs["model"], "claude-opus-4-7")
+        server.run_triage_reasoning_openai(client, SAMPLE_REQUEST)
+        kwargs = client.chat.completions.create.call_args.kwargs
+        self.assertEqual(kwargs["model"], server.TRIAGE_MODEL)
 
     def test_system_prompt_contains_esi_rules(self) -> None:
         client = _fake_client(WELL_FORMED_JSON)
-        server.run_triage_reasoning(client, SAMPLE_REQUEST)
-        kwargs = client.messages.create.call_args.kwargs
-        system = kwargs["system"]
+        server.run_triage_reasoning_openai(client, SAMPLE_REQUEST)
+        messages = client.chat.completions.create.call_args.kwargs["messages"]
+        self.assertEqual(messages[0]["role"], "system")
+        system = messages[0]["content"]
         self.assertIn("ESI", system)
         self.assertIn("red flag", system.lower())
         self.assertIn("critical", system)
@@ -88,12 +92,11 @@ class TriageReasoningTests(unittest.TestCase):
 
     def test_user_message_summarizes_the_patient(self) -> None:
         client = _fake_client(WELL_FORMED_JSON)
-        server.run_triage_reasoning(client, SAMPLE_REQUEST)
-        kwargs = client.messages.create.call_args.kwargs
-        messages = kwargs["messages"]
-        self.assertEqual(len(messages), 1)
-        self.assertEqual(messages[0]["role"], "user")
-        body = messages[0]["content"]
+        server.run_triage_reasoning_openai(client, SAMPLE_REQUEST)
+        messages = client.chat.completions.create.call_args.kwargs["messages"]
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[1]["role"], "user")
+        body = messages[1]["content"]
         self.assertIn("er-101", body)
         self.assertIn("crushing chest pain", body)
         self.assertIn("HR 104", body)
@@ -103,29 +106,29 @@ class TriageReasoningTests(unittest.TestCase):
     # ─── response parsing ────────────────────────────────────────
     def test_well_formed_response_parses(self) -> None:
         client = _fake_client(WELL_FORMED_JSON)
-        result = server.run_triage_reasoning(client, SAMPLE_REQUEST)
+        result = server.run_triage_reasoning_openai(client, SAMPLE_REQUEST)
         self.assertEqual(result.patient_id, "er-101")
         self.assertEqual(result.esi_level, "critical")
-        self.assertEqual(result.model, "claude-opus-4-7")
+        self.assertEqual(result.model, server.TRIAGE_MODEL)
         self.assertIn("ST elevation", result.rationale)
         self.assertEqual(len(result.red_flags), 1)
 
     def test_json_fence_is_stripped(self) -> None:
         fenced = f"```json\n{WELL_FORMED_JSON}\n```"
         client = _fake_client(fenced)
-        result = server.run_triage_reasoning(client, SAMPLE_REQUEST)
+        result = server.run_triage_reasoning_openai(client, SAMPLE_REQUEST)
         self.assertEqual(result.esi_level, "critical")
 
     def test_bare_fence_is_stripped(self) -> None:
         fenced = f"```\n{WELL_FORMED_JSON}\n```"
         client = _fake_client(fenced)
-        result = server.run_triage_reasoning(client, SAMPLE_REQUEST)
+        result = server.run_triage_reasoning_openai(client, SAMPLE_REQUEST)
         self.assertEqual(result.esi_level, "critical")
 
     def test_malformed_json_raises_502(self) -> None:
         client = _fake_client("this is not JSON at all, sorry")
         with self.assertRaises(HTTPException) as cm:
-            server.run_triage_reasoning(client, SAMPLE_REQUEST)
+            server.run_triage_reasoning_openai(client, SAMPLE_REQUEST)
         self.assertEqual(cm.exception.status_code, 502)
         self.assertIn("malformed", cm.exception.detail)
 
@@ -135,13 +138,13 @@ class TriageReasoningTests(unittest.TestCase):
         )
         client = _fake_client(bogus)
         with self.assertRaises(HTTPException) as cm:
-            server.run_triage_reasoning(client, SAMPLE_REQUEST)
+            server.run_triage_reasoning_openai(client, SAMPLE_REQUEST)
         self.assertEqual(cm.exception.status_code, 502)
 
     def test_empty_response_raises_502(self) -> None:
         client = _fake_client("")
         with self.assertRaises(HTTPException) as cm:
-            server.run_triage_reasoning(client, SAMPLE_REQUEST)
+            server.run_triage_reasoning_openai(client, SAMPLE_REQUEST)
         self.assertEqual(cm.exception.status_code, 502)
 
     def test_missing_red_flags_defaults_to_empty_list(self) -> None:
@@ -149,22 +152,21 @@ class TriageReasoningTests(unittest.TestCase):
             {"esi_level": "stable", "rationale": "ankle sprain, vitals normal."}
         )
         client = _fake_client(partial)
-        result = server.run_triage_reasoning(client, SAMPLE_REQUEST)
+        result = server.run_triage_reasoning_openai(client, SAMPLE_REQUEST)
         self.assertEqual(result.esi_level, "stable")
         self.assertEqual(result.red_flags, [])
 
 
 class TriageEndpointIntegrationTests(unittest.TestCase):
-    """HTTP-level smoke of the endpoint, patching the Anthropic client."""
+    """HTTP-level smoke of the endpoint, patching the OpenAI client."""
 
     def setUp(self) -> None:
-        self.client = TestClient(server.app)
+        self.client = TestClient(server.app, headers=_AUTH_HEADERS)
 
     def test_endpoint_returns_response_from_mocked_client(self) -> None:
-        # Patch the lazy-built client so the route sees our mock.
         fake = _fake_client(WELL_FORMED_JSON)
-        original = server._anthropic_client
-        server._anthropic_client = fake
+        original = server._openai_client
+        server._openai_client = fake
         try:
             resp = self.client.post(
                 "/agent/triage/classify",
@@ -182,11 +184,23 @@ class TriageEndpointIntegrationTests(unittest.TestCase):
                 },
             )
         finally:
-            server._anthropic_client = original
+            server._openai_client = original
         self.assertEqual(resp.status_code, 200, resp.text)
         body = resp.json()
         self.assertEqual(body["esi_level"], "critical")
-        self.assertEqual(body["model"], "claude-opus-4-7")
+        self.assertEqual(body["model"], server.TRIAGE_MODEL)
+
+    def test_endpoint_requires_shared_secret(self) -> None:
+        unauthenticated = TestClient(server.app)
+        resp = unauthenticated.post(
+            "/agent/triage/classify",
+            json={
+                "patient_id": "er-101",
+                "chief_complaint": "crushing chest pain",
+                "vitals": {"hr": 104},
+            },
+        )
+        self.assertEqual(resp.status_code, 401)
 
 
 if __name__ == "__main__":
