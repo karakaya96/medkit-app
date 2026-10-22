@@ -28,8 +28,6 @@ import asyncio
 import json
 import logging
 import os
-import subprocess
-import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -55,10 +53,12 @@ NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter")  # openrouter | nvidia
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
 
-# Model map per provider
+# Model map per provider. OpenRouter uses the same PATIENT_MODEL default as
+# backend/server.py so text chat and voice never drift apart; NVIDIA has its
+# own endpoint-qualified ID.
 LLM_MODELS = {
-    "openrouter": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "nvidia": "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "openrouter": os.getenv("PATIENT_MODEL", "nvidia/nemotron-3-ultra:free"),
+    "nvidia": os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b"),
 }
 
 # ── Turkish TTS voices (edge-tts, ücretsiz, API anahtarı yok) ─────────────
@@ -104,13 +104,16 @@ def parse_metadata(raw: str | None) -> dict:
 def _provider_cfg(provider: str | None = None) -> dict:
     """Return base_url, api_key, model for the given provider."""
     provider = provider or LLM_PROVIDER
-    if provider == "nvidia" and NVIDIA_API_KEY:
-        return {
-            "base_url": NVIDIA_BASE_URL,
-            "api_key": NVIDIA_API_KEY,
-            "model": LLM_MODELS["nvidia"],
-        }
-    # Default: OpenRouter
+    if provider == "nvidia":
+        if NVIDIA_API_KEY:
+            return {
+                "base_url": NVIDIA_BASE_URL,
+                "api_key": NVIDIA_API_KEY,
+                "model": LLM_MODELS["nvidia"],
+            }
+        logger.warning(
+            "LLM_PROVIDER=nvidia but NVIDIA_API_KEY is unset — falling back to OpenRouter"
+        )
     return {
         "base_url": OPENROUTER_BASE_URL,
         "api_key": OPENROUTER_API_KEY,
@@ -150,41 +153,50 @@ class EdgeTTSStream(ChunkedStream):
 
         communicate = edge_tts.Communicate(self._input_text, self._voice)
         audio_bytes = b""
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_bytes += chunk["data"]
+        try:
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_bytes += chunk["data"]
+        except Exception:
+            logger.exception("edge-tts synthesis failed (voice=%s)", self._voice)
+            return
 
         if not audio_bytes:
             logger.error("edge-tts produced no audio bytes")
             return
 
-        # Convert MP3 → PCM 16kHz mono using ffmpeg via stdin/stdout pipe
+        # Convert MP3 → PCM 16kHz mono using ffmpeg via stdin/stdout pipe.
+        # Must be async: EdgeTTSStream runs inside the LiveKit event loop, and
+        # a blocking subprocess.run froze every other room for the duration of
+        # the decode.
         try:
-            result = subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-f",
-                    "mp3",
-                    "-i",
-                    "pipe:0",
-                    "-ar",
-                    "16000",
-                    "-ac",
-                    "1",
-                    "-f",
-                    "s16le",
-                    "pipe:1",
-                ],
-                input=audio_bytes,
-                capture_output=True,
-                check=True,
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg",
+                "-y",
+                "-f",
+                "mp3",
+                "-i",
+                "pipe:0",
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-f",
+                "s16le",
+                "pipe:1",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            pcm_data = result.stdout
-        except subprocess.CalledProcessError as e:
-            logger.exception(
-                "ffmpeg MP3 decode failed: %s",
-                e.stderr.decode() if e.stderr else str(e),
+        except FileNotFoundError:
+            logger.error("ffmpeg not found on PATH — edge-tts TTS cannot run")
+            return
+        pcm_data, stderr = await proc.communicate(audio_bytes)
+        if proc.returncode != 0:
+            logger.error(
+                "ffmpeg MP3 decode failed (rc=%s): %s",
+                proc.returncode,
+                stderr.decode(errors="replace") if stderr else "",
             )
             return
 
@@ -255,6 +267,17 @@ class WhisperSTT(agents.stt.STT):
             )
             logger.info("faster-whisper model loaded: %s", self._model)
 
+    def _transcribe_sync(self, audio, language: str) -> str:
+        """Blocking whisper call — always run via asyncio.to_thread."""
+        self._ensure_whisper()
+        segments, _ = self._whisper.transcribe(
+            audio,
+            language=language,
+            task="transcribe",
+            vad_filter=True,
+        )
+        return " ".join(seg.text.strip() for seg in segments if seg.text.strip())
+
     async def _recognize_impl(
         self,
         buffer,
@@ -262,7 +285,9 @@ class WhisperSTT(agents.stt.STT):
         language: agents.NotGivenOr[str] = agents.NOT_GIVEN,
         conn_options: agents.APIConnectOptions = agents.DEFAULT_API_CONNECT_OPTIONS,
     ) -> agents.stt.SpeechEvent:
-        self._ensure_whisper()
+        # Loading the model and transcribing are both CPU-blocking; offload
+        # them so the voice worker can keep servicing other rooms.
+        await asyncio.to_thread(self._ensure_whisper)
 
         # Convert AudioBuffer (list of AudioFrame or single AudioFrame) to
         # numpy float32 array
@@ -309,15 +334,8 @@ class WhisperSTT(agents.stt.STT):
         if num_channels == 2:
             audio = audio.reshape(-1, 2).mean(axis=1)
 
-        # Run Whisper transcription
-        segments, _ = self._whisper.transcribe(
-            audio,
-            language=self._language,
-            task="transcribe",
-            vad_filter=True,
-        )
-
-        text = " ".join(seg.text.strip() for seg in segments if seg.text.strip())
+        # Run Whisper transcription off the event loop.
+        text = await asyncio.to_thread(self._transcribe_sync, audio, self._language)
 
         return agents.stt.SpeechEvent(
             type=agents.stt.SpeechEventType.FINAL_TRANSCRIPT,
@@ -347,6 +365,12 @@ async def entrypoint(ctx: agents.JobContext):
     )
 
     cfg = _provider_cfg()
+    if not cfg["api_key"]:
+        raise RuntimeError(
+            "No LLM API key configured for the voice worker. "
+            "Set OPENROUTER_API_KEY (or NVIDIA_API_KEY + LLM_PROVIDER=nvidia) "
+            "in backend/.env.local."
+        )
 
     session = AgentSession(
         stt=WhisperSTT(model=WHISPER_MODEL, language="tr"),

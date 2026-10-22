@@ -32,7 +32,7 @@ Copy `.env.example` to `.env.local` and fill in:
 - `ANTHROPIC_API_KEY` — `medkit-attending` Managed Agent (Opus 4.7).
 - `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` — patient persona, triage, and voice-worker LLM.
 - `NVIDIA_API_KEY` — optional voice-worker fallback (`LLM_PROVIDER=nvidia`).
-- `PATIENT_MODEL`, `TRIAGE_MODEL`, `LLM_PROVIDER` — model routing without code changes.
+- `PATIENT_MODEL`, `TRIAGE_MODEL`, `LLM_PROVIDER`, `NVIDIA_MODEL` — model routing without code changes.
 - `WHISPER_MODEL` — faster-whisper size (default `base`).
 - `BACKEND_SHARED_SECRET` — non-loopback clients must send `x-medkit-auth`; if empty, only loopback clients are accepted.
 - `EHR_API_TOKEN` — credential-vault demo token.

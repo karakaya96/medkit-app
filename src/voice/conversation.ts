@@ -1,5 +1,5 @@
 /**
- * Real-time voice conversation, backed by LiveKit + Deepgram + Cartesia.
+ * Real-time voice conversation, backed by LiveKit + faster-whisper + edge-tts.
  *
  * Public API surface kept from the legacy push-to-talk implementation so
  * existing consumers (PatientPanel, FloatingVoicePanel, Face, ExamRoom,

@@ -101,6 +101,7 @@ OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 # Optional fallback for the voice worker:
 NVIDIA_API_KEY=
+NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 LLM_PROVIDER=openrouter
 
 # Patient/triage model IDs (OpenAI-compatible)

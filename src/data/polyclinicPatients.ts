@@ -814,7 +814,7 @@ const neurology: PatientCase[] = [
       { testId: 'ct-head', result: 'No acute intracranial findings. No mass effect.', abnormal: false },
       { testId: 'glucose', result: '98 mg/dL.', abnormal: false },
       { testId: 'cbc', result: 'Hgb 13.6, WBC 6.4. Normal.', abnormal: false },
-      { testId: 'mri-brain', result: 'Subtle enhancement of right facial nerve in labyrinthine and tympanic segments. No central lesion or stroke.', abnormal: true },
+      { testId: 'mri-brain', result: 'No central lesion, mass effect, or stroke. Facial nerve signal is symmetric and within normal limits.', abnormal: false },
       { testId: 'bmp', result: 'Glucose 96, electrolytes normal.', abnormal: false },
       { testId: 'audiometry', result: 'Hearing thresholds within normal limits bilaterally.', abnormal: false },
     ],

@@ -645,6 +645,21 @@ const ABNORMAL_BY_TEST: Record<string, AbnormalEntry[]> = {
       ],
     },
     {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/e/ea/Ultrasound_of_upper_right_liver_lobe_showing_fatty_liver.jpg',
+      caption:
+        'Coarsened, increased echogenicity of the liver parenchyma with loss of portal-vein wall definition — chronic liver disease / hepatic steatosis.',
+      credit: `${WIKIMEDIA} · Cerevisae · CC BY-SA 4.0`,
+      subject: 'Coarse liver echotexture',
+      tags: [
+        'chronic-hepatitis-c',
+        'chronic-hepatitis-b',
+        'hepatic-steatosis',
+        'fatty-liver',
+        'nafld',
+        'chronic-liver-disease',
+      ],
+    },
+    {
       url: 'https://upload.wikimedia.org/wikipedia/commons/9/99/Ultrasonography_of_abdominal_aortic_aneurysm_in_sagittal_plane.jpg',
       caption: 'Abdominal aortic aneurysm — dilated aorta on sagittal ultrasound.',
       credit: `${WIKIMEDIA} · Mikael Häggström MD · CC0 (public domain)`,
@@ -886,6 +901,9 @@ const ABNORMAL_BY_TEST: Record<string, AbnormalEntry[]> = {
         'stable-angina',
         'la-dilation',
         'lvh',
+        'essential-hypertension',
+        'htn-uncontrolled',
+        'hypertensive-heart-disease',
       ],
     },
   ],
@@ -1142,6 +1160,21 @@ const ABNORMAL_BY_TEST: Record<string, AbnormalEntry[]> = {
         'ulcerative-colitis',
         'colitis',
         'bowel-wall-thickening',
+      ],
+    },
+    {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/e/ea/Ultrasound_of_upper_right_liver_lobe_showing_fatty_liver.jpg',
+      caption:
+        'Coarsened, increased echogenicity of the liver parenchyma with loss of portal-vein wall definition — chronic liver disease / hepatic steatosis.',
+      credit: `${WIKIMEDIA} · Cerevisae · CC BY-SA 4.0`,
+      subject: 'Coarse liver echotexture',
+      tags: [
+        'chronic-hepatitis-c',
+        'chronic-hepatitis-b',
+        'hepatic-steatosis',
+        'fatty-liver',
+        'nafld',
+        'chronic-liver-disease',
       ],
     },
     {

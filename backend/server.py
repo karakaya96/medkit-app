@@ -174,8 +174,8 @@ def health():
 #
 # Per-env vars:
 #   ANTHROPIC_API_KEY  — required. Server-side only; never exposed to the
-#                        browser. Separate from VITE_ANTHROPIC_API_KEY used
-#                        by the browser Haiku patient-persona path.
+#                        browser. Used only by the Managed Agent; patient
+#                        persona + triage use OPENROUTER_API_KEY.
 #   MEDKIT_AGENT_ID    — persisted agent ID (bootstrap returns it the
 #                        first time; set it here afterwards to skip
 #                        re-creating).
@@ -204,7 +204,7 @@ def health():
 #                                                server-side and returns
 #                                                a fake record. The token
 #                                                never leaves the process.
-#   POST /agent/triage/classify                — one-shot Opus 4.7 ESI
+#   POST /agent/triage/classify                — one-shot ESI
 #                                                classifier for ER
 #                                                arrivals. Stateless;
 #                                                separate from the
@@ -259,10 +259,10 @@ AGENT_NAME = "medkit-attending"
 ENV_NAME = "medkit-attending-env"
 
 # Direct-inference model for the dedicated triage-reasoning endpoint.
-# Pinned to Opus 4.7 because the spec reserves triage for the strongest
-# clinical-reasoning model — see CLAUDE.md's "Model routing" table. This
-# is a separate code path from the Managed Agent (AGENT_MODEL); the
-# agent observes the whole encounter, triage classifies one arrival.
+# Defaults to Nemotron via OpenRouter for zero-cost operation; override
+# with TRIAGE_MODEL. This is a separate code path from the Managed Agent
+# (AGENT_MODEL): the agent observes the whole encounter, triage classifies
+# one arrival.
 TRIAGE_MODEL = os.environ.get("TRIAGE_MODEL", "nvidia/nemotron-3-ultra:free")
 TRIAGE_MAX_TOKENS = 512
 
@@ -1188,18 +1188,17 @@ def vault_ehr_lookup(req: EhrLookupRequest):
 
 
 # ───────────────────────────────────────────────────────────────────────────
-# Triage-reasoning endpoint (direct Opus 4.7 inference)
+# Triage-reasoning endpoint (direct OpenAI-compatible inference)
 # ───────────────────────────────────────────────────────────────────────────
 #
 # Separate from the medkit-attending Managed Agent. That agent observes the
 # whole encounter and grades it; this endpoint is a one-shot ESI triage
 # classification called at ER arrival, before the agent has seen enough
-# to form an opinion. Kept on Opus 4.7 — the spec reserves clinical
-# reasoning for the strongest model.
+# to form an opinion. Uses TRIAGE_MODEL via OpenRouter.
 #
 # Design notes:
-#   • Pure function `run_triage_reasoning(client, request)` so unit
-#     tests can mock the Anthropic client without spinning HTTP.
+#   • Pure function `run_triage_reasoning_openai(client, request)` so unit
+#     tests can mock the OpenAI client without spinning HTTP.
 #   • The system prompt inlines the 5 ESI rules we actually apply. It
 #     mirrors `.claude/skills/medkit-triage-logic.md` so keep them in sync
 #     when either changes.
@@ -1288,88 +1287,14 @@ def _format_triage_user_message(req: TriageClassifyRequest) -> str:
     return " ".join(parts)
 
 
-def _extract_text_blocks(message: object) -> str:
-    """Concatenate every text block in an Anthropic Messages response.
-    Accepts both real SDK Message objects and dict-shaped test doubles."""
-    blocks = getattr(message, "content", None)
-    if blocks is None and isinstance(message, dict):
-        blocks = message.get("content")
-    if not blocks:
-        return ""
-    out: list[str] = []
-    for b in blocks:
-        # Real SDK: TextBlock with .text attribute and .type == 'text'.
-        btype = getattr(b, "type", None)
-        btext = getattr(b, "text", None)
-        if btype is None and isinstance(b, dict):
-            btype = b.get("type")
-            btext = b.get("text")
-        if btype == "text" and isinstance(btext, str):
-            out.append(btext)
-    return "".join(out)
-
-
-def run_triage_reasoning(
-    client: "Anthropic",
-    req: TriageClassifyRequest,
-) -> TriageClassifyResponse:
-    """Invoke Opus 4.7 to classify an ER arrival. Pure function modulo
-    the client handle — unit tests pass a mock client."""
-    message = client.messages.create(  # type: ignore[attr-defined]
-        model=TRIAGE_MODEL,
-        max_tokens=TRIAGE_MAX_TOKENS,
-        system=ESI_TRIAGE_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": _format_triage_user_message(req)}],
-    )
-    raw = _extract_text_blocks(message).strip()
-    if not raw:
-        raise HTTPException(
-            status_code=502,
-            detail="triage model returned empty response",
-        )
-    # The model is instructed to return strict JSON. Strip an accidental
-    # ```json fence if the model wraps it.
-    if raw.startswith("```"):
-        raw = raw.strip("`")
-        if raw.lower().startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-    try:
-        parsed = json.loads(raw)
-    except ValueError as e:
-        _agent_log.warning("triage: malformed JSON from model: %s", raw[:200])
-        raise HTTPException(
-            status_code=502,
-            detail=f"triage model returned malformed JSON: {e}",
-        )
-    esi = str(parsed.get("esi_level", "")).strip()
-    if esi not in ALLOWED_ESI_LEVELS:
-        raise HTTPException(
-            status_code=502,
-            detail=f"triage model returned invalid esi_level: {esi!r}",
-        )
-    rationale = str(parsed.get("rationale", "")).strip()
-    red_flags_raw = parsed.get("red_flags", [])
-    red_flags = [str(x) for x in red_flags_raw] if isinstance(red_flags_raw, list) else []
-    _agent_log.info(
-        "triage: patient=%s esi=%s flags=%d",
-        req.patient_id, esi, len(red_flags),
-    )
-    return TriageClassifyResponse(
-        patient_id=req.patient_id,
-        esi_level=esi,
-        rationale=rationale,
-        red_flags=red_flags,
-        model=TRIAGE_MODEL,
-    )
-
-
 def run_triage_reasoning_openai(
     client: "OpenAI",
     req: TriageClassifyRequest,
 ) -> TriageClassifyResponse:
-    """OpenAI (OpenRouter) uyumlu ESI sınıflandırması. Anthropic messages.create
-    yerine OpenAI chat.completions.create kullanır."""
+    """Classify an ER arrival through an OpenAI-compatible endpoint.
+
+    Pure function modulo the client handle — tests pass a fake client with
+    a ``chat.completions.create`` method."""
     response = client.chat.completions.create(  # type: ignore[attr-defined]
         model=TRIAGE_MODEL,
         max_tokens=TRIAGE_MAX_TOKENS,
@@ -1427,15 +1352,14 @@ def triage_classify(req: TriageClassifyRequest):
 
 
 # ───────────────────────────────────────────────────────────────────────────
-# Patient persona streaming — Haiku 4.5
+# Patient persona streaming — Nemotron via OpenRouter
 # ───────────────────────────────────────────────────────────────────────────
 #
-# The browser used to call Anthropic directly with a VITE_ANTHROPIC_API_KEY
-# (dangerouslyAllowBrowser). That shipped the key in every bundle. We now
-# route patient-persona streaming through the backend so the key stays
-# server-side. SSE frames carry `{"text": "..."}` deltas, terminated with
-# `{"done": true}`. The Haiku response is short (max 256 tokens) so we
-# skip the keepalive logic the long-lived agent stream needs.
+# The browser never sees an LLM key: it streams through this backend, which
+# attaches OPENROUTER_API_KEY server-side. SSE frames carry `{"text": "..."}`
+# deltas, terminated with `{"done": true}`. Patient replies are short
+# (max 256 tokens) so we skip the keepalive logic the long-lived agent
+# stream needs.
 
 PATIENT_MODEL = os.environ.get("PATIENT_MODEL", "nvidia/nemotron-3-ultra:free")
 PATIENT_MAX_TOKENS = 256

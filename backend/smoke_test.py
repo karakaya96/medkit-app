@@ -132,6 +132,27 @@ def main() -> int:
             bool(agent.get("bootstrapped")),
             "run /agent/bootstrap and persist IDs to backend/.env.local",
         )
+        r.check(
+            "health: agent/environment IDs are not exposed",
+            "agent_id" not in agent and "environment_id" not in agent,
+            "health payload leaks vault IDs",
+        )
+        voice = body.get("voice") or {}
+        r.check(
+            "health: STT is faster-whisper",
+            voice.get("stt") == "faster-whisper",
+            f"got {voice.get('stt')!r}",
+        )
+        r.check(
+            "health: TTS is edge-tts",
+            voice.get("tts") == "edge-tts",
+            f"got {voice.get('tts')!r}",
+        )
+        r.check(
+            "health: OpenRouter/NVIDIA key configured",
+            bool(voice.get("llm_configured")),
+            "set OPENROUTER_API_KEY (or NVIDIA_API_KEY) in backend/.env.local",
+        )
     else:
         r.check("health body parses as JSON", False, body)
         return r.done()

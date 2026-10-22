@@ -95,14 +95,16 @@ Each has a zod-validated schema in `src/agents/customTools.ts`; the frontend map
 - `simulation-state.ts` — `beds.length === 4`, triage bed + bed slot disjoint, queue IDs unique.
 - `three-scene.ts` — every mesh above floor plane, no overlap between furniture bounding boxes.
 - `triage-priority.ts` — ESI rules hold against sample cases.
+- `rubric-smoke.ts` — hero cases round-trip through `getRubricFor`; citations exist in the guideline registry.
+- `imaging-coverage.ts` — every abnormal imaging result has a tagged reference image for its diagnosis.
 - `run-all.ts` — one command runs all of the above; exits non-zero on any failure.
 
 `package.json` scripts: `"verify": "node scripts/verify/run-all.ts"` and `"test": "node scripts/test/run-all.ts"` — both zero-dep via Node 22+ native TypeScript, no `tsx` needed (BrynQ dev machines block `tsx.exe` via group policy).
 
 ## Test surface (landed)
 
-- `npm test` — 30 Node test-runner tests in `scripts/test/` (custom tools, tool dispatcher, triage client, loop commands). Each firing also executes the real `scripts/loop/verify-loop.ts` end-to-end.
-- `backend/.venv/Scripts/python.exe -m unittest discover backend/tests` — 22 FastAPI TestClient tests (credential vault no-leak invariants, triage reasoning with mocked Anthropic client).
+- `npm test` — 18 Node test-runner tests in `scripts/test/` (custom tools, tool dispatcher, triage client, loop commands). Each firing also executes the real `scripts/loop/verify-loop.ts` end-to-end.
+- `backend/.venv/bin/python -m unittest discover backend/tests` — 29 FastAPI TestClient tests (credential-vault no-leak invariants, auth gate, triage reasoning with a mocked OpenAI client).
 
 Both suites run in under two seconds without network access.
 

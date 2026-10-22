@@ -75,7 +75,7 @@ All keys server-side only, in `backend/.env.local`. The browser never sees them.
 - `ANTHROPIC_API_KEY` — Managed Agents + attending grading in the FastAPI server.
 - `OPENROUTER_API_KEY` / `OPENROUTER_BASE_URL` — patient persona, triage, and voice-worker LLM.
 - `NVIDIA_API_KEY` (optional) — voice-worker fallback when `LLM_PROVIDER=nvidia`.
-- `PATIENT_MODEL` / `TRIAGE_MODEL` / `LLM_PROVIDER` — model routing without code changes.
+- `PATIENT_MODEL` / `TRIAGE_MODEL` / `LLM_PROVIDER` / `NVIDIA_MODEL` — model routing without code changes.
 - `WHISPER_MODEL` — faster-whisper size (default `base`).
 - `BACKEND_SHARED_SECRET` — non-loopback clients must send `x-medkit-auth`; empty disables non-loopback access.
 - `EHR_API_TOKEN` — credential-vault demo token.
