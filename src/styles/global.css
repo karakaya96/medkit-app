@@ -172,12 +172,16 @@ body {
   to   { transform: rotate(360deg); }
 }
 
-.wobble  { animation: wobble-soft 3.6s ease-in-out infinite; transform-origin: 50% 90%; }
-.floaty  { animation: float-up 3s ease-in-out infinite; }
-.blink   { animation: blink 4.5s ease-in-out infinite; transform-origin: center; }
-.breathe { animation: breathe 3.5s ease-in-out infinite; }
+/* Decorative motion is static on purpose. Infinite transform animations
+ * repaint the whole page every frame (43% of a CPU core on the splash in
+ * testing) and make laptops hot for no clinical value. Only the one-shot
+ * entrance animation below is kept. */
+.wobble,
+.floaty,
+.blink,
+.breathe,
+.drift   { animation: none; }
 .popin   { animation: pop-in 500ms cubic-bezier(.5,1.7,.4,1) backwards; }
-.drift   { animation: drift 6s ease-in-out infinite; }
 
 /* small interactions */
 .tap {

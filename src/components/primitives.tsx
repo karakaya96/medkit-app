@@ -340,7 +340,7 @@ interface TopBarProps {
 
 export function TopBar({
   here = 0,
-  steps = ['Polyclinic'],
+  steps = ['Poliklinik'],
   showProfile = true,
 }: TopBarProps) {
   return (
@@ -357,7 +357,7 @@ export function TopBar({
       <span
         className="tap"
         onClick={() => store.setScreen('splash')}
-        title="Back to start"
+        title="Başlangıca dön"
         style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
       >
         <Wordmark size={28} />
@@ -367,7 +367,7 @@ export function TopBar({
         <div
           className="tap"
           onClick={() => store.setScreen('home')}
-          title="Open profile"
+          title="Profili aç"
           style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
         >
           <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--ink-2)' }}>Bedirhan</span>

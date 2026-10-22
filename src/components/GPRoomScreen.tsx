@@ -60,7 +60,7 @@ export function GPRoomScreen() {
 
   return (
     <div className="screen" style={{ background: 'var(--cream)', position: 'relative' }}>
-      <TopBar here={1} steps={['Polyclinic', 'GP']} />
+      <TopBar here={1} steps={['Poliklinik', 'Pratisyen']} />
 
       <DoodleScatter
         items={[
@@ -73,9 +73,9 @@ export function GPRoomScreen() {
 
       <div style={{ padding: '36px 36px 12px', textAlign: 'center' }}>
         <span className="chip butter" style={{ marginBottom: 12 }}>
-          🏥 GENERAL PRACTICE
+          🏥 GENEL PRATİSYEN
         </span>
-        <h1 style={{ fontSize: 42, lineHeight: 1.05, marginTop: 12 }}>How would you like to start?</h1>
+        <h1 style={{ fontSize: 42, lineHeight: 1.05, marginTop: 12 }}>Nasıl başlamak istersin?</h1>
         <div
           style={{
             fontSize: 16,
@@ -86,7 +86,7 @@ export function GPRoomScreen() {
             margin: '8px auto 0',
           }}
         >
-          Pick a polyclinic and the next patient on the bench will walk straight in. Or browse the case folder.
+          Bir poliklinik seç, sıradaki hasta doğrudan içeri girsin. Ya da vaka klasörüne göz at.
         </div>
       </div>
 
@@ -117,7 +117,7 @@ export function GPRoomScreen() {
                 textTransform: 'uppercase',
               }}
             >
-              Specialty
+              Branş
             </span>
             <span>
               {CLINIC_ICON[activeClinic]} {CLINIC_LABELS[activeClinic]}
@@ -183,7 +183,7 @@ export function GPRoomScreen() {
           }}
         >
           <div style={{ position: 'absolute', top: -14, left: 24 }} className="chip rose">
-            01 · ACCEPT
+            01 · KABUL ET
           </div>
           <div className="floaty" style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
             <div
@@ -223,7 +223,7 @@ export function GPRoomScreen() {
             </div>
           </div>
           <h2 style={{ fontSize: 28, lineHeight: 1.1, textAlign: 'center', marginBottom: 8 }}>
-            Accept the next patient
+            Sıradaki hastayı kabul et
           </h2>
           <div
             style={{
@@ -236,8 +236,8 @@ export function GPRoomScreen() {
             }}
           >
             {next
-              ? `${next.name} walks in next — straight into the consultation.`
-              : `No cases queued for ${CLINIC_LABELS[activeClinic]} yet.`}
+              ? `${next.name} sıradaki hasta — doğrudan görüşmeye.`
+              : `${CLINIC_LABELS[activeClinic]} için henüz sırada vaka yok.`}
           </div>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
             {next && (
@@ -249,7 +249,7 @@ export function GPRoomScreen() {
               </>
             )}
             <span className="chip butter">
-              {CLINIC_ICON[activeClinic]} {queueAhead} in {CLINIC_LABELS[activeClinic]}
+              {CLINIC_ICON[activeClinic]} {queueAhead} hasta · {CLINIC_LABELS[activeClinic]}
             </span>
           </div>
         </div>
@@ -267,7 +267,7 @@ export function GPRoomScreen() {
           }}
         >
           <div style={{ position: 'absolute', top: -14, left: 24 }} className="chip butter">
-            02 · BROWSE
+            02 · GÖZ AT
           </div>
           <div className="floaty" style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
             <div
@@ -285,7 +285,7 @@ export function GPRoomScreen() {
             </div>
           </div>
           <h2 style={{ fontSize: 28, lineHeight: 1.1, textAlign: 'center', marginBottom: 8 }}>
-            Pick from the charts
+            Dosyalardan seç
           </h2>
           <div
             style={{
@@ -297,13 +297,13 @@ export function GPRoomScreen() {
               minHeight: 42,
             }}
           >
-            Open the case folder, filter by specialty or red-flag, attempted ribbons on completed.
+            Vaka klasörünü aç; branşa veya kırmızı bayrağa göre filtrele, tamamlananlarda deneme şeritlerini gör.
           </div>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span className="chip" style={{ background: 'white' }}>
-              📁 {totalAll} cases
+              📁 {totalAll} vaka
             </span>
-            <span className="chip butter">filterable</span>
+            <span className="chip butter">filtrelenebilir</span>
           </div>
         </div>
       </div>
@@ -315,7 +315,7 @@ export function GPRoomScreen() {
           style={{ fontSize: 14, padding: '10px 18px' }}
           onClick={() => store.setScreen('mode')}
         >
-          ← Back to corridor
+          ← Koridora dön
         </button>
       </div>
     </div>

@@ -156,10 +156,9 @@ export function buildDebriefRequest(
   };
 }
 
-/** Encode the request as a single chat-message text block. The agent
- *  reads it from the user.message it receives — no separate channel
- *  exists in the Managed Agents API, so we prefix a stable header to
- *  make the trigger unambiguous in the system prompt's DEBRIEF MODE. */
+/** Encode the request as a single labelled text block, kept for debugging
+ *  and for prompt-comparison scripts. The live `/agent/debrief` path posts
+ *  the structured JSON directly. */
 export function debriefRequestToUserMessage(req: DebriefRequest): string {
   return [
     '[debrief request]',

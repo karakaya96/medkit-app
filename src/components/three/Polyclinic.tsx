@@ -394,7 +394,7 @@ interface MonitorPatient {
  *  record card (no vitals trace — this isn't an ICU monitor, just the
  *  doctor's desktop EMR application). The card is populated from the
  *  current polyclinic patient and uses the cozy MedKit palette. */
-function makeMonitorTexture(patient: MonitorPatient | null): CanvasTexture {
+function makeMonitorTexture(patient: MonitorPatient | null, isEr = false): CanvasTexture {
   const w = 512, h = 320;
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
@@ -409,10 +409,10 @@ function makeMonitorTexture(patient: MonitorPatient | null): CanvasTexture {
   ctx.fillRect(0, 0, w, 40);
   ctx.fillStyle = '#3B2A1F';
   ctx.font = 'bold 17px "Nunito", sans-serif';
-  ctx.fillText('medkit · Patient Record', 14, 26);
+  ctx.fillText(isEr ? 'medkit · Acil Hasta Kaydı' : 'medkit · Hasta Kaydı', 14, 26);
   ctx.fillStyle = '#5FCFA0';
   ctx.font = 'bold 12px "Nunito", sans-serif';
-  ctx.fillText('● ACTIVE SESSION', w - 150, 26);
+  ctx.fillText('● AKTİF OTURUM', w - 128, 26);
 
   // Card frame with the signature plush outline.
   ctx.strokeStyle = '#2B1E16';
@@ -427,7 +427,7 @@ function makeMonitorTexture(patient: MonitorPatient | null): CanvasTexture {
   if (!patient) {
     ctx.fillStyle = '#8E7261';
     ctx.font = '600 14px "Nunito", sans-serif';
-    ctx.fillText('No active patient. Accept the next patient to begin.', cardX + 18, cardY + cardH / 2);
+    ctx.fillText('Aktif hasta yok. Başlamak için sıradaki hastayı kabul edin.', cardX + 18, cardY + cardH / 2);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
@@ -453,7 +453,7 @@ function makeMonitorTexture(patient: MonitorPatient | null): CanvasTexture {
   ctx.fillText(patient.name, cardX + 84, cardY + 38);
   ctx.fillStyle = '#6B4F3F';
   ctx.font = '600 14px "Nunito", sans-serif';
-  ctx.fillText(`${patient.age} years · ${patient.gender === 'F' ? 'Female' : 'Male'}`, cardX + 84, cardY + 60);
+  ctx.fillText(`${patient.age} yaş · ${patient.gender === 'F' ? 'Kadın' : 'Erkek'}`, cardX + 84, cardY + 60);
 
   // Divider.
   ctx.strokeStyle = 'rgba(43,30,22,0.18)';
@@ -468,14 +468,14 @@ function makeMonitorTexture(patient: MonitorPatient | null): CanvasTexture {
   // Field rows.
   ctx.font = 'bold 11px "Nunito", sans-serif';
   ctx.fillStyle = '#8E7261';
-  ctx.fillText('PATIENT ID', cardX + 18, cardY + 110);
+  ctx.fillText('HASTA NO', cardX + 18, cardY + 110);
   ctx.fillStyle = '#3B2A1F';
   ctx.font = '700 14px "Nunito", sans-serif';
   ctx.fillText(`#${patient.id.toUpperCase()}`, cardX + 18, cardY + 128);
 
   ctx.font = 'bold 11px "Nunito", sans-serif';
   ctx.fillStyle = '#8E7261';
-  ctx.fillText('REASON FOR VISIT', cardX + 18, cardY + 156);
+  ctx.fillText('BAŞVURU NEDENİ', cardX + 18, cardY + 156);
   ctx.fillStyle = '#3B2A1F';
   ctx.font = '700 13px "Nunito", sans-serif';
   // wrap chief complaint at ~52 chars
@@ -497,9 +497,9 @@ function makeMonitorTexture(patient: MonitorPatient | null): CanvasTexture {
 
   // Badges along the bottom — mood markers using the cozy chip language.
   const chipY = cardY + cardH - 30;
-  drawChip(ctx, cardX + 18, chipY, '★ accepted', '#A8E5C8');
-  drawChip(ctx, cardX + 124, chipY, '🎙 voice live', '#A6D8FF');
-  drawChip(ctx, cardX + 246, chipY, 'OSCE training', '#FFD86B');
+  drawChip(ctx, cardX + 18, chipY, '★ kabul edildi', '#A8E5C8');
+  drawChip(ctx, cardX + 138, chipY, '🎙 ses canlı', '#A6D8FF');
+  drawChip(ctx, cardX + 252, chipY, 'OSCE eğitimi', '#FFD86B');
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -528,18 +528,21 @@ function drawChip(ctx: CanvasRenderingContext2D, x: number, y: number, label: st
 function DoctorDesk({
   position,
   patient,
+  isEr = false,
 }: {
   position: [number, number, number];
   patient: MonitorPatient | null;
+  isEr?: boolean;
 }) {
   // Re-bake whenever the patient identity changes so the monitor reflects
   // the person actually sitting in the chair. Disposed on each rebuild.
-  const monitorTex = useMemo(() => makeMonitorTexture(patient), [
+  const monitorTex = useMemo(() => makeMonitorTexture(patient, isEr), [
     patient?.id,
     patient?.name,
     patient?.age,
     patient?.gender,
     patient?.chiefComplaint,
+    isEr,
   ]);
   useEffect(() => () => monitorTex.dispose(), [monitorTex]);
   return (
@@ -2734,14 +2737,17 @@ function WalkingPatient({
 export function Polyclinic({
   voiceActive = false,
   onCloseVoice,
+  mode = 'polyclinic',
 }: {
   voiceActive?: boolean;
   onCloseVoice?: () => void;
+  mode?: 'polyclinic' | 'er';
 } = {}) {
   const state = useGameState();
   const clinicId = state.polyclinic.clinic;
   const patient = state.polyclinic.patient;
   const clinicLabel = CLINIC_LABELS[clinicId];
+  const isEr = mode === 'er';
 
   const [doorOpen, setDoorOpen] = useState(false);
   const prevPatientRef = useRef<typeof patient>(null);
@@ -2851,8 +2857,8 @@ export function Polyclinic({
       {/* Back wall signage */}
       <SpecialtyPoster
         position={[-3.0, 2.2, ROOM_BACK_Z + 0.18]}
-        title={clinicLabel.toUpperCase()}
-        subtitle="DR. CONSULTATION ROOM"
+        title={isEr ? 'ACİL SERVİS' : clinicLabel.toUpperCase()}
+        subtitle={isEr ? 'TRİYAJ VE RESÜSİTASYON' : 'DR. MUAYENE ODASI'}
       />
       <WallDiplomas />
 
@@ -2883,15 +2889,15 @@ export function Polyclinic({
       <FloorBooks position={[WORLD_LEFT_X + 0.65, 0, ROOM_BACK_Z + 2.5]} />
 
       {/* Corridor signage */}
-      <CorridorSign position={[-3.6, 2.3, ROOM_FRONT_Z + 0.16]} title={clinicLabel.toUpperCase()} />
-      <CorridorSign position={[3.6, 2.3, ROOM_FRONT_Z + 0.16]} title="POLYCLINIC" />
+      <CorridorSign position={[-3.6, 2.3, ROOM_FRONT_Z + 0.16]} title={isEr ? 'ACİL SERVİS' : clinicLabel.toUpperCase()} />
+      <CorridorSign position={[3.6, 2.3, ROOM_FRONT_Z + 0.16]} title={isEr ? 'ACİL SERVİS' : 'POLİKLİNİK'} />
       <group position={[0, 2.5, CORRIDOR_FRONT_Z - 0.2]} rotation={[0, Math.PI, 0]}>
         <mesh>
           <boxGeometry args={[3.6, 0.6, 0.06]} />
           <meshStandardMaterial color={PALETTE.accent} emissive={PALETTE.accent} emissiveIntensity={0.4} />
         </mesh>
         <Text position={[0, 0, 0.04]} fontSize={0.22} color="#fff8ec" anchorX="center" anchorY="middle" fontWeight={700}>
-          POLYCLINIC — {clinicLabel.toUpperCase()}
+          {isEr ? 'ACİL SERVİS — TRİYAJ' : `POLİKLİNİK — ${clinicLabel.toUpperCase()}`}
         </Text>
       </group>
 
@@ -2903,6 +2909,7 @@ export function Polyclinic({
           redundant and made the chair look occupied. */}
       <DoctorDesk
         position={DESK_POS}
+        isEr={isEr}
         patient={
           patient
             ? {

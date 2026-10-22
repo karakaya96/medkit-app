@@ -28,6 +28,7 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -57,8 +58,8 @@ WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
 # backend/server.py so text chat and voice never drift apart; NVIDIA has its
 # own endpoint-qualified ID.
 LLM_MODELS = {
-    "openrouter": os.getenv("PATIENT_MODEL", "nvidia/nemotron-3-ultra:free"),
-    "nvidia": os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b"),
+    "openrouter": os.getenv("PATIENT_MODEL", os.getenv("FREE_MODEL", "openrouter/free")),
+    "nvidia": os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3.5-lightning"),
 }
 
 # ── Turkish TTS voices (edge-tts, ücretsiz, API anahtarı yok) ─────────────
@@ -104,16 +105,23 @@ def parse_metadata(raw: str | None) -> dict:
 def _provider_cfg(provider: str | None = None) -> dict:
     """Return base_url, api_key, model for the given provider."""
     provider = provider or LLM_PROVIDER
+    if provider == "nvidia" and NVIDIA_API_KEY:
+        return {
+            "base_url": NVIDIA_BASE_URL,
+            "api_key": NVIDIA_API_KEY,
+            "model": LLM_MODELS["nvidia"],
+        }
     if provider == "nvidia":
-        if NVIDIA_API_KEY:
-            return {
-                "base_url": NVIDIA_BASE_URL,
-                "api_key": NVIDIA_API_KEY,
-                "model": LLM_MODELS["nvidia"],
-            }
         logger.warning(
             "LLM_PROVIDER=nvidia but NVIDIA_API_KEY is unset — falling back to OpenRouter"
         )
+    if not OPENROUTER_API_KEY and NVIDIA_API_KEY:
+        logger.warning("OPENROUTER_API_KEY unset — falling back to NVIDIA")
+        return {
+            "base_url": NVIDIA_BASE_URL,
+            "api_key": NVIDIA_API_KEY,
+            "model": LLM_MODELS["nvidia"],
+        }
     return {
         "base_url": OPENROUTER_BASE_URL,
         "api_key": OPENROUTER_API_KEY,
@@ -141,10 +149,10 @@ class EdgeTTSStream(ChunkedStream):
 
     async def _run(self, output_emitter: AudioEmitter) -> None:
         output_emitter.initialize(
-            request_id="",
+            request_id=uuid.uuid4().hex,
             sample_rate=16000,
             num_channels=1,
-            mime_type="audio/L16",
+            mime_type="audio/pcm",
         )
 
         # Generate MP3 with edge-tts (stream directly to bytes)
@@ -382,6 +390,15 @@ async def entrypoint(ctx: agents.JobContext):
         ),
         tts=EdgeTTS(voice=voice_id),
         vad=silero.VAD.load(),
+        # Local LiveKit has no cloud turn detector/interruption service;
+        # Silero VAD keeps turn-taking fully local and free.
+        turn_handling={
+            "turn_detection": "vad",
+            "interruption": {"mode": "vad"},
+        },
+        # No local mic/echo path in headless/dev; skipping warmup avoids
+        # suppressing the very first TTS greeting.
+        aec_warmup_duration=0.0,
     )
 
     agent = Agent(instructions=system_prompt)
@@ -412,6 +429,9 @@ async def entrypoint(ctx: agents.JobContext):
         return "ok"
 
     # Patient blurts their chief complaint as soon as the doctor walks up.
+    # Wait for the browser participant; otherwise the greeting can play to an
+    # empty room and be lost before the doctor subscribes.
+    await ctx.wait_for_participant()
     await session.generate_reply(
         instructions=(
             f'Sen {speaker_gender} cinsiyetli bir hasta veya ebeveynsin. '

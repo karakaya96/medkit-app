@@ -32,7 +32,7 @@ import {
   type Participant,
   type TranscriptionSegment,
 } from 'livekit-client';
-import { hasClaudeKey, streamClaude, type ChatMessage } from './claude';
+import { hasPatientBackend, streamPatient, type ChatMessage } from './patientStream';
 
 const FALLBACK_PERSONA =
   'Sen bir hasta\'sın ve bir doktora konuşuyorsun. Yanıtları 1-2 kısa konuşma cümlesiyle sınırla. ' +
@@ -334,7 +334,7 @@ export class Conversation {
     this.setStatus('loading');
 
     try {
-      if (!hasClaudeKey()) {
+      if (!hasPatientBackend()) {
         throw new Error('Patient backend unavailable.');
       }
 
@@ -347,7 +347,7 @@ export class Conversation {
         gender: this.voiceGender,
       });
 
-      this.listeners.onProgress?.('Connecting to voice room…');
+      this.listeners.onProgress?.('Ses odasına bağlanılıyor…');
       const room = new Room({ adaptiveStream: true, dynacast: true });
       this.wireRoomEvents(room);
       await room.connect(tok.url, tok.token);
@@ -478,7 +478,7 @@ export class Conversation {
     const controller = new AbortController();
     let assistantText = '';
     try {
-      for await (const token of streamClaude(this.systemPrompt, this.messages, controller.signal)) {
+      for await (const token of streamPatient(this.systemPrompt, this.messages, controller.signal)) {
         assistantText += token;
       }
     } catch (err: any) {
@@ -500,7 +500,9 @@ export class Conversation {
   async sendTextMessage(text: string, _opts?: { speak?: boolean }): Promise<void> {
     const clean = text.trim();
     if (!clean) return;
-    if (this.status !== 'ready') return;
+    // Allow typed chat as a fallback when the LiveKit voice room failed to
+    // connect. The HTTP patient path only needs the backend/OpenRouter key.
+    if (this.status !== 'ready' && this.status !== 'error') return;
 
     this.listeners.onSubtitle?.({ who: 'you', text: clean });
     this.messages.push({ role: 'user', content: clean });
@@ -511,13 +513,13 @@ export class Conversation {
     const controller = new AbortController();
     let assistantText = '';
     try {
-      for await (const token of streamClaude(this.systemPrompt, this.messages, controller.signal)) {
+      for await (const token of streamPatient(this.systemPrompt, this.messages, controller.signal)) {
         assistantText += token;
       }
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
         console.error('Text-chat LLM error:', err);
-        this.listeners.onError?.(`Claude failed: ${err?.message ?? err}`);
+        this.listeners.onError?.(`Hasta yanıtı alınamadı: ${err?.message ?? err}`);
         this.setStatus('ready');
         return;
       }
@@ -530,6 +532,21 @@ export class Conversation {
       this.messages.push({ role: 'assistant', content: trimmed });
       this.saveMessages();
       this.emitMessages();
+      // No LiveKit room: use the browser's Turkish voice so the patient is
+      // still audible. This keeps the encounter usable without a worker.
+      if (!this.room && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel();
+          const utter = new SpeechSynthesisUtterance(trimmed);
+          utter.lang = 'tr-TR';
+          utter.rate = 1;
+          const trVoice = window.speechSynthesis
+            .getVoices()
+            .find((v) => v.lang.toLowerCase().startsWith('tr'));
+          if (trVoice) utter.voice = trVoice;
+          window.speechSynthesis.speak(utter);
+        } catch { /* noop */ }
+      }
     }
     this.setStatus('ready');
   }

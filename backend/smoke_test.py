@@ -1,30 +1,26 @@
-"""End-to-end smoke test for the ER backend.
+"""End-to-end smoke test for the medkit backend.
 
-Run this before a demo to confirm the Managed Agents pipeline is alive.
-It exercises every endpoint the browser uses, in order, and prints a
-concise PASS/FAIL per step so you can spot a regression in seconds.
+Run this before a demo to confirm the free-tier pipeline is configured.
+It checks /health and, when an OpenRouter key is present, one live ESI
+classification. Every call is free-tier; no Anthropic key is involved.
 
 Usage:
 
-    backend/.venv/Scripts/python.exe backend/smoke_test.py
+    backend/.venv/bin/python backend/smoke_test.py
 
-Exits 0 if every step passes, 1 otherwise. Safe to run repeatedly; it
-does not mutate persistent state (creates a throwaway session that will
-idle out for free).
+Exits 0 if every step passes, 1 otherwise.
 """
 
 from __future__ import annotations
 
 import json
 import sys
-import time
 import urllib.error
 import urllib.request
-from typing import Any, Optional
-from urllib.parse import urlencode
+from typing import Optional
 
 BASE = "http://127.0.0.1:8787"
-TIMEOUT = 20.0
+TIMEOUT = 90.0
 
 
 def _request(
@@ -52,50 +48,13 @@ def _request(
         return status, payload
 
 
-def _stream(path: str, seconds: float = 10.0) -> list[dict]:
-    """Open the SSE stream and collect events for N seconds, then close."""
-    url = f"{BASE}{path}"
-    events: list[dict] = []
-    deadline = time.monotonic() + seconds
-    req = urllib.request.Request(url)
-    try:
-        with urllib.request.urlopen(req, timeout=seconds + 5) as resp:
-            cur_event: Optional[str] = None
-            cur_data: list[str] = []
-            while time.monotonic() < deadline:
-                line = resp.readline().decode("utf-8", errors="replace")
-                if not line:
-                    break
-                line = line.rstrip("\n")
-                if line.startswith(":"):
-                    continue  # comment / keepalive
-                if line == "":
-                    if cur_event and cur_data:
-                        try:
-                            events.append(
-                                {"type": cur_event, "payload": json.loads("".join(cur_data))}
-                            )
-                        except ValueError:
-                            events.append({"type": cur_event, "payload": "".join(cur_data)})
-                    cur_event = None
-                    cur_data = []
-                    continue
-                if line.startswith("event:"):
-                    cur_event = line[len("event:"):].strip()
-                elif line.startswith("data:"):
-                    cur_data.append(line[len("data:"):].lstrip())
-    except Exception as e:
-        events.append({"type": "transport_error", "payload": str(e)})
-    return events
-
-
 class Reporter:
     def __init__(self) -> None:
-        self.failures: list[str] = []
         self.passed = 0
+        self.failures: list[str] = []
 
-    def check(self, name: str, condition: bool, detail: Any = "") -> None:
-        if condition:
+    def check(self, name: str, ok: bool, detail: str = "") -> None:
+        if ok:
             self.passed += 1
             print(f"PASS  {name}")
             return
@@ -103,158 +62,79 @@ class Reporter:
         print(f"FAIL  {name}  ({detail})")
 
     def done(self) -> int:
-        print(
-            f"\n{self.passed} passed, {len(self.failures)} failed."
-        )
+        print(f"\n{self.passed} passed, {len(self.failures)} failed.")
         return 1 if self.failures else 0
 
 
 def main() -> int:
     r = Reporter()
 
-    # ─── 1. /health ────────────────────────────────────────────────
     status, body = _request("GET", "/health")
     r.check("GET /health returns 200", status == 200, f"status={status}")
-    if isinstance(body, dict):
-        agent = body.get("agent") or {}
-        r.check(
-            "health: anthropic SDK installed",
-            bool(agent.get("anthropic_sdk_installed")),
-            "install anthropic>=0.88.0 in backend venv",
-        )
-        r.check(
-            "health: ANTHROPIC_API_KEY configured",
-            bool(agent.get("api_key_configured")),
-            "set ANTHROPIC_API_KEY in backend/.env.local",
-        )
-        r.check(
-            "health: agent bootstrapped",
-            bool(agent.get("bootstrapped")),
-            "run /agent/bootstrap and persist IDs to backend/.env.local",
-        )
-        r.check(
-            "health: agent/environment IDs are not exposed",
-            "agent_id" not in agent and "environment_id" not in agent,
-            "health payload leaks vault IDs",
-        )
-        voice = body.get("voice") or {}
-        r.check(
-            "health: STT is faster-whisper",
-            voice.get("stt") == "faster-whisper",
-            f"got {voice.get('stt')!r}",
-        )
-        r.check(
-            "health: TTS is edge-tts",
-            voice.get("tts") == "edge-tts",
-            f"got {voice.get('tts')!r}",
-        )
-        r.check(
-            "health: OpenRouter/NVIDIA key configured",
-            bool(voice.get("llm_configured")),
-            "set OPENROUTER_API_KEY (or NVIDIA_API_KEY) in backend/.env.local",
-        )
-    else:
-        r.check("health body parses as JSON", False, body)
+    if not isinstance(body, dict):
+        r.check("health body parses as JSON", False, str(body))
         return r.done()
 
-    # ─── 2. /agent/bootstrap (idempotent) ──────────────────────────
-    status, body = _request("POST", "/agent/bootstrap")
-    r.check("POST /agent/bootstrap returns 200", status == 200, f"status={status} body={body}")
-    if isinstance(body, dict):
-        r.check(
-            "bootstrap: created=false (cached IDs used)",
-            body.get("created") is False,
-            f"got {body.get('created')!r} — indicates a new agent was created",
-        )
-
-    # ─── 3. /agent/sessions (create) ───────────────────────────────
-    status, body = _request("POST", "/agent/sessions", {"title": "smoke_test"})
-    r.check("POST /agent/sessions returns 200", status == 200, f"status={status} body={body}")
-    session_id: Optional[str] = None
-    if isinstance(body, dict):
-        session_id = body.get("session_id")
-        r.check("session_id returned", bool(session_id), "no session_id in response")
-    if not session_id:
+    r.check("health: ok", body.get("ok") is True, f"got {body.get('ok')!r}")
+    voice = body.get("voice") or {}
+    r.check(
+        "health: STT is faster-whisper",
+        voice.get("stt") == "faster-whisper",
+        f"got {voice.get('stt')!r}",
+    )
+    r.check(
+        "health: TTS is edge-tts",
+        voice.get("tts") == "edge-tts",
+        f"got {voice.get('tts')!r}",
+    )
+    grading = body.get("grading") or {}
+    r.check(
+        "health: grading uses OpenRouter",
+        grading.get("provider") == "openrouter",
+        f"got {grading.get('provider')!r}",
+    )
+    r.check(
+        "health: OpenRouter key configured",
+        bool(grading.get("api_key_configured")),
+        "set OPENROUTER_API_KEY in backend/.env.local",
+    )
+    r.check(
+        "health: no Anthropic/Grading secrets leaked",
+        "api_key" not in grading and "anthropic" not in grading,
+        "health payload leaks a secret or paid-provider field",
+    )
+    if not grading.get("api_key_configured"):
         return r.done()
-
-    # ─── 4. /agent/sessions/{id} (retrieve) ────────────────────────
-    status, body = _request("GET", f"/agent/sessions/{session_id}")
-    r.check("GET /agent/sessions/{id} returns 200", status == 200, f"status={status}")
-
-    # ─── 5. /agent/sessions/{id}/events (send + stream) ────────────
-    # Spawn the stream in a background thread, then send a message.
-    import threading
-
-    events_collected: list[dict] = []
-
-    def stream_worker() -> None:
-        events_collected.extend(_stream(f"/agent/sessions/{session_id}/stream", seconds=25))
-
-    t = threading.Thread(target=stream_worker, daemon=True)
-    t.start()
-    time.sleep(0.5)  # let stream open
 
     status, body = _request(
         "POST",
-        f"/agent/sessions/{session_id}/events",
+        "/agent/triage/classify",
         {
-            "events": [
-                {
-                    "type": "user.message",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": (
-                                "[ER arrival] patient 62M severity=critical. "
-                                "HR 104 BP 152/94 SpO2 95 RR 22. ST elevation "
-                                "on ECG, crushing chest pain. Emit "
-                                "render_triage_badge."
-                            ),
-                        }
-                    ],
-                }
-            ]
+            "patient_id": "smoke-stemi",
+            "chief_complaint": "Göğüs ağrısı, terleme",
+            "vitals": {
+                "hr": 104,
+                "bp_systolic": 152,
+                "bp_diastolic": 94,
+                "spo2": 95,
+                "rr": 22,
+                "temp_c": 36.8,
+            },
+            "ecg_findings": "ST elevation in II, III, aVF",
         },
     )
-    r.check("POST /events returns 200", status == 200, f"status={status} body={body}")
-
-    t.join(timeout=30)
-
-    # What arrived on the stream?
-    type_counts: dict[str, int] = {}
-    for ev in events_collected:
-        type_counts[ev["type"]] = type_counts.get(ev["type"], 0) + 1
-
-    r.check(
-        "stream: session.status_running observed",
-        type_counts.get("session.status_running", 0) >= 1,
-        f"types seen: {type_counts}",
-    )
-    r.check(
-        "stream: agent.custom_tool_use observed",
-        type_counts.get("agent.custom_tool_use", 0) >= 1,
-        f"agent did not emit a custom tool. types seen: {type_counts}",
-    )
-    r.check(
-        "stream: session.status_idle observed",
-        type_counts.get("session.status_idle", 0) >= 1,
-        f"types seen: {type_counts}",
-    )
-
-    # ─── 6. /agent/sessions/{id}/events (list) ─────────────────────
-    status, body = _request("GET", f"/agent/sessions/{session_id}/events?limit=50")
-    r.check("GET /events (list) returns 200", status == 200, f"status={status}")
+    r.check("POST /agent/triage/classify returns 200", status == 200, f"status={status} body={body}")
     if isinstance(body, dict):
-        data = body.get("data") or []
         r.check(
-            "list: returned at least one event",
-            len(data) >= 1,
-            f"got {len(data)} events",
+            "triage: STEMI classified critical",
+            body.get("esi_level") == "critical",
+            f"got {body.get('esi_level')!r}",
         )
-
-    # ─── 7. /agent/refresh (no-op schema change) ───────────────────
-    status, body = _request("POST", "/agent/refresh")
-    r.check("POST /agent/refresh returns 200", status == 200, f"status={status}")
+        r.check(
+            "triage: rationale is non-empty",
+            bool(str(body.get("rationale", "")).strip()),
+            "empty rationale",
+        )
 
     return r.done()
 

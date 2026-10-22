@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Html } from '@react-three/drei';
 import type { ActivePatient } from '../../game/types';
 import type { ConversationStatus, SubtitleEvent } from '../../voice/conversation';
-import { getOrCreatePatientConversation } from '../../voice/conversationStore';
+import { getExistingConversation, getOrCreatePatientConversation } from '../../voice/conversationStore';
 
 interface Props {
   bedPosition: [number, number, number];
@@ -28,6 +28,8 @@ export function FloatingVoicePanel({
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceStarting, setVoiceStarting] = useState(false);
   const [progress, setProgress] = useState('');
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
 
   // Stable listener object — built ONCE per mount.
   const listenersRef = useRef<{
@@ -88,20 +90,22 @@ export function FloatingVoicePanel({
 
   const firstName = patient.case.name.split(' ')[0];
   const statusLabel =
-    status === 'listening' ? 'LISTENING…' :
-    status === 'thinking' ? 'THINKING…' :
-    status === 'speaking' ? `${firstName.toUpperCase()} SPEAKING` :
-    status === 'loading' ? 'CONNECTING…' :
-    voiceReady ? 'LIVE' :
-    voiceStarting ? 'CONNECTING…' : 'OFFLINE';
+    status === 'listening' ? 'DİNLİYOR…' :
+    status === 'thinking' ? 'DÜŞÜNÜYOR…' :
+    status === 'speaking' ? `${firstName.toUpperCase()} KONUŞUYOR` :
+    status === 'loading' ? 'BAĞLANIYOR…' :
+    status === 'error' ? 'SES YOK' :
+    voiceReady ? 'CANLI' :
+    voiceStarting ? 'BAĞLANIYOR…' : 'ÇEVRİMDIŞI';
 
   const idleHint =
-    status === 'speaking' ? `${firstName} is speaking…` :
-    status === 'thinking' ? `${firstName} is thinking…` :
-    status === 'listening' ? 'Listening — go ahead.' :
-    voiceStarting ? (progress || 'Connecting…') :
-    voiceReady ? 'Just talk — real-time. Press T to end.' :
-    'Connecting…';
+    status === 'speaking' ? `${firstName} konuşuyor…` :
+    status === 'thinking' ? `${firstName} düşünüyor…` :
+    status === 'listening' ? 'Dinliyor — konuşabilirsiniz.' :
+    status === 'error' ? 'Ses bağlantısı yok — aşağıdan yazarak devam edin.' :
+    voiceStarting ? (progress || 'Bağlanıyor…') :
+    voiceReady ? 'Konuşmanız yeterli — canlı. Bitirmek için T.' :
+    'Bağlanıyor…';
 
   const live = voiceReady && (status === 'listening' || status === 'speaking' || status === 'thinking' || status === 'ready');
   const statusColor =
@@ -193,7 +197,7 @@ export function FloatingVoicePanel({
           )}
         </div>
 
-        {error && (
+        {error && status !== 'error' && (
           <div
             style={{
               marginTop: 8,
@@ -207,8 +211,55 @@ export function FloatingVoicePanel({
               color: 'var(--ink)',
             }}
           >
-            ⚠ {error}
+            ⚠ Ses bağlantısı kurulamadı. Yazarak devam edebilirsiniz.
           </div>
+        )}
+
+        {status === 'error' && (
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const text = draft.trim();
+              if (!text || sending) return;
+              const conv = getExistingConversation(patient.bedIndex);
+              if (!conv) return;
+              setSending(true);
+              setDraft('');
+              try {
+                await conv.sendTextMessage(text);
+              } finally {
+                setSending(false);
+              }
+            }}
+            style={{ display: 'flex', gap: 6, marginTop: 8 }}
+          >
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Hastaya yaz…"
+              aria-label="Hastaya mesaj yaz"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                border: '2.5px solid var(--line)',
+                borderRadius: 9,
+                padding: '7px 9px',
+                fontFamily: 'inherit',
+                fontSize: 12,
+                fontWeight: 700,
+                color: 'var(--ink)',
+                background: 'white',
+              }}
+            />
+            <button
+              type="submit"
+              disabled={sending || !draft.trim()}
+              className="btn-plush primary"
+              style={{ padding: '6px 10px', fontSize: 11, opacity: sending || !draft.trim() ? 0.55 : 1 }}
+            >
+              Gönder
+            </button>
+          </form>
         )}
 
         {/* Speech-bubble tail — outline + fill stack matches the cozy SpeechBubble. */}

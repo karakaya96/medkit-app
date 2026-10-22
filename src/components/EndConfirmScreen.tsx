@@ -10,20 +10,28 @@ interface Item {
 }
 
 const ITEMS: Item[] = [
-  { id: 'sum', label: 'Have you summarised back to the patient?', sub: 'A short read-back of the story.' },
-  { id: 'safe', label: 'Have you safety-netted?', sub: 'What to look for, when to come back.' },
-  { id: 'ice', label: 'Have you addressed their ideas, concerns, expectations?', sub: 'Did the patient feel heard?' },
+  { id: 'sum', label: 'Hastaya öyküyü özetledin mi?', sub: 'Kısa bir geri okuma yeterli.' },
+  { id: 'safe', label: 'Güvenlik ağı kurdun mu?', sub: 'Nelere dikkat etmeli, ne zaman geri gelmeli.' },
+  { id: 'ice', label: 'Hastanın düşünce, endişe ve beklentilerini ele aldın mı?', sub: 'Hasta kendini dinlenmiş hissetti mi?' },
 ];
 
 export function EndConfirmScreen() {
   const tweaks = useTweaks();
   const checked = useStore((s) => s.endConfirm);
   const caseId = useStore((s) => s.selectedCaseId);
+  const mode = useStore((s) => s.encounterMode);
   const c = getCase(caseId);
 
   return (
     <div className="screen" style={{ background: 'var(--cream)', position: 'relative' }}>
-      <TopBar here={5} steps={['Polyclinic', 'GP', 'Case', 'Brief', 'Encounter', 'Wrap']} />
+      <TopBar
+        here={5}
+        steps={
+          mode === 'er'
+            ? ['Acil Servis', 'Triyaj', 'Vaka', 'Brifing', 'Muayene', 'Kapanış']
+            : ['Poliklinik', 'Pratisyen', 'Vaka', 'Brifing', 'Muayene', 'Kapanış']
+        }
+      />
 
       <DoodleScatter
         items={[
@@ -70,7 +78,7 @@ export function EndConfirmScreen() {
                   boxShadow: 'var(--plush-sm)',
                 }}
               >
-                "Is there anything else I should know?"
+                "Bilmem gereken başka bir şey var mı?"
                 <svg style={{ position: 'absolute', right: -14, top: 14 }} width="20" height="22" viewBox="0 0 20 22">
                   <path
                     d="M 0 4 L 18 12 L 0 18 Z"
@@ -86,9 +94,9 @@ export function EndConfirmScreen() {
           </div>
 
           <div className="chip butter" style={{ marginBottom: 16 }}>
-            BEFORE YOU FINISH
+            BİTMEDEN ÖNCE
           </div>
-          <h1 style={{ fontSize: 32, lineHeight: 1.1, marginBottom: 8 }}>Take a breath.</h1>
+          <h1 style={{ fontSize: 32, lineHeight: 1.1, marginBottom: 8 }}>Bir nefes al.</h1>
           <div
             style={{
               fontSize: 15,
@@ -98,7 +106,7 @@ export function EndConfirmScreen() {
               maxWidth: 460,
             }}
           >
-            One last check — these affect your debrief. Tick what you actually did.
+            Son bir kontrol — bunlar değerlendirmeni etkiler. Gerçekten yaptıklarını işaretle.
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 22 }}>
@@ -153,7 +161,7 @@ export function EndConfirmScreen() {
               style={{ flex: 1 }}
               onClick={() => store.setScreen('encounter')}
             >
-              ← Back to the room
+              ← Muayene odasına dön
             </button>
             <button
               type="button"
@@ -161,7 +169,7 @@ export function EndConfirmScreen() {
               style={{ flex: 1.4 }}
               onClick={() => store.setScreen('debrief')}
             >
-              End consultation →
+              Görüşmeyi bitir →
             </button>
           </div>
         </div>

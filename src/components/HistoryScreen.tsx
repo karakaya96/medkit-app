@@ -10,13 +10,13 @@ interface HistoryCase {
 }
 
 const CASES: HistoryCase[] = [
-  { day: 'Tue 25 Apr', name: 'Aisha Rahman', cond: 'Hypertension', verdict: 'Satisfactory', color: 'var(--mint)' },
-  { day: 'Mon 24 Apr', name: 'Tom Whitford', cond: 'Heart failure', verdict: 'Borderline', color: 'var(--butter)' },
-  { day: 'Mon 24 Apr', name: 'Leila Haddad', cond: 'Tonsillitis', verdict: 'Good', color: 'var(--mint)' },
-  { day: 'Fri 21 Apr', name: 'Davy Chen', cond: 'Dyspepsia', verdict: 'Satisfactory', color: 'var(--mint)' },
-  { day: 'Thu 20 Apr', name: 'Mei Tan', cond: 'T2DM', verdict: 'Good', color: 'var(--mint)' },
-  { day: 'Wed 19 Apr', name: 'Priya Iyer', cond: 'Headache', verdict: 'Borderline', color: 'var(--butter)' },
-  { day: 'Tue 18 Apr', name: 'Henrik Solberg', cond: 'AF', verdict: 'Clear-fail', color: 'var(--rose)' },
+  { day: '25 Nis Sal', name: 'Aisha Rahman', cond: 'Hipertansiyon', verdict: 'Yeterli', color: 'var(--mint)' },
+  { day: '24 Nis Pzt', name: 'Tom Whitford', cond: 'Kalp yetmezliği', verdict: 'Sınırda', color: 'var(--butter)' },
+  { day: '24 Nis Pzt', name: 'Leila Haddad', cond: 'Tonsillit', verdict: 'İyi', color: 'var(--mint)' },
+  { day: '21 Nis Cum', name: 'Davy Chen', cond: 'Dispepsi', verdict: 'Yeterli', color: 'var(--mint)' },
+  { day: '20 Nis Per', name: 'Mei Tan', cond: 'T2DM', verdict: 'İyi', color: 'var(--mint)' },
+  { day: '19 Nis Çar', name: 'Priya Iyer', cond: 'Baş ağrısı', verdict: 'Sınırda', color: 'var(--butter)' },
+  { day: '18 Nis Sal', name: 'Henrik Solberg', cond: 'AF', verdict: 'Başarısız', color: 'var(--rose)' },
 ];
 
 function TrendChart() {
@@ -79,7 +79,7 @@ function Legend({ color, label }: { color: string; label: string }) {
 export function HistoryScreen() {
   return (
     <div className="screen" style={{ background: 'var(--cream)', overflowY: 'auto' }}>
-      <TopBar here={1} steps={['Profile', 'History']} />
+      <TopBar here={1} steps={['Profil', 'Geçmiş']} />
       <div style={{ padding: '28px 36px' }}>
         <div
           style={{
@@ -90,21 +90,21 @@ export function HistoryScreen() {
           }}
         >
           <div>
-            <h1 style={{ fontSize: 36 }}>Your training log</h1>
+            <h1 style={{ fontSize: 36 }}>Eğitim kaydın</h1>
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-2)', marginTop: 4 }}>
-              The story is the trend, not any single case.
+              Önemli olan tek vaka değil, genel eğilim.
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <span className="chip butter">last 30 days</span>
-            <span className="chip">all conditions ▾</span>
+            <span className="chip butter">son 30 gün</span>
+            <span className="chip">tüm durumlar ▾</span>
             <button
               type="button"
               className="btn-plush ghost"
               style={{ fontSize: 13, padding: '8px 14px' }}
               onClick={() => store.setScreen('home')}
             >
-              ← Profile
+              ← Profil
             </button>
           </div>
         </div>
@@ -120,7 +120,7 @@ export function HistoryScreen() {
               marginBottom: 12,
             }}
           >
-            DOMAIN TRENDS · last 30 days
+            ALAN EĞİLİMLERİ · son 30 gün
           </div>
           <TrendChart />
           <div
@@ -133,9 +133,9 @@ export function HistoryScreen() {
               fontWeight: 700,
             }}
           >
-            <Legend color="var(--peach-deep)" label="Data Gathering" />
-            <Legend color="var(--mint-deep)" label="Clinical Management" />
-            <Legend color="var(--sky-deep)" label="Interpersonal" />
+            <Legend color="var(--peach-deep)" label="Veri Toplama" />
+            <Legend color="var(--mint-deep)" label="Klinik Yönetim" />
+            <Legend color="var(--sky-deep)" label="Kişilerarası" />
           </div>
         </div>
 
@@ -151,7 +151,7 @@ export function HistoryScreen() {
                 marginBottom: 12,
               }}
             >
-              CASE TIMELINE
+              VAKA ZAMAN ÇİZELGESİ
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {CASES.map((c, i) => (
@@ -193,11 +193,11 @@ export function HistoryScreen() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div className="plush" style={{ padding: 16, background: 'var(--peach)' }}>
               <div className="chip" style={{ background: 'white', marginBottom: 10 }}>
-                🎯 FOCUS AREA
+                🎯 ODAK ALANI
               </div>
-              <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.1 }}>Data Gathering</div>
+              <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.1 }}>Veri Toplama</div>
               <div style={{ fontSize: 13, fontWeight: 600, marginTop: 6 }}>
-                You're missing ICE in 6 of your last 10 cases. Tomorrow's suggested case is built around it.
+                Son 10 vakanın 6'sında ICE'yi atlıyorsun. Yarının önerilen vakası bunun üzerine kurulu.
               </div>
             </div>
 
@@ -212,7 +212,7 @@ export function HistoryScreen() {
                   marginBottom: 10,
                 }}
               >
-                GUIDELINES YOU'VE TOUCHED
+                DOKUNDUĞUN KILAVUZLAR
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {['NICE NG136', 'NICE NG28', 'GINA 2025', 'ESC 2023', 'BSG 2024', 'NICE NG209', 'NICE CG69', 'NICE NG217'].map(
@@ -227,10 +227,10 @@ export function HistoryScreen() {
 
             <div className="plush" style={{ padding: 16, background: 'var(--rose)' }}>
               <div className="chip" style={{ background: 'white', marginBottom: 10 }}>
-                🚩 RED-FLAG CASES
+                🚩 KIRMIZI BAYRAK VAKALAR
               </div>
               <div style={{ fontSize: 32, fontWeight: 900, lineHeight: 1 }}>3 / 7</div>
-              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4 }}>red-flag cases attempted</div>
+              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4 }}>kırmızı bayrak vakası denendi</div>
             </div>
           </div>
         </div>

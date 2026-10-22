@@ -98,6 +98,41 @@ function AdaptiveCameraFov() {
   return null;
 }
 
+/** Render resolution cap: keep the internal buffer near 1280 px wide.
+ *  On 1440p/4K displays this is the single biggest GPU saving; the art is
+ *  flat and cartoon-like, so the upscale is barely visible. */
+function renderDpr(): number {
+  if (typeof window === 'undefined') return 1;
+  return Math.min(1, Math.max(0.65, 1280 / Math.max(1, window.innerWidth)));
+}
+
+/** Cap the WebGL render loop at 30 fps. The scene is mostly static, so
+ *  60 fps wastes GPU/CPU and heats laptops for no visible benefit. R3F's
+ *  demand loop only renders when we invalidate; this pacer drives it. */
+function FramePacer({ fps = 30, paused = false }: { fps?: number; paused?: boolean }) {
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    if (paused) {
+      invalidate();
+      return;
+    }
+    let raf = 0;
+    let last = 0;
+    const interval = 1000 / fps;
+    const tick = (t: number) => {
+      raf = requestAnimationFrame(tick);
+      if (document.hidden) return;
+      if (t - last >= interval) {
+        last = t;
+        invalidate();
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [fps, invalidate, paused]);
+  return null;
+}
+
 function Loader() {
   return (
     <Html center>
@@ -171,6 +206,7 @@ function Kbd({ children }: { children: React.ReactNode }) {
 export function EncounterScreen() {
   const state = useGameState();
   const patient = state.polyclinic.patient;
+  const mode = state.encounterMode;
 
   // Voice is on the moment the encounter mounts — the FloatingVoicePanel
   // calls `getOrCreatePatientConversation()` which kicks off LiveKit
@@ -182,7 +218,10 @@ export function EncounterScreen() {
   // If the user navigated straight here without a patient set, drop the
   // current selectedCaseId in. Without this the scene shows an empty room.
   useEffect(() => {
-    if (!patient) store.loadPolyclinicPatient(state.selectedCaseId);
+    if (!patient) {
+      if (state.encounterMode === 'er') store.loadErPatient(state.selectedCaseId);
+      else store.loadPolyclinicPatient(state.selectedCaseId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -341,7 +380,14 @@ export function EncounterScreen() {
 
   return (
     <div className="screen" style={{ background: 'var(--cream)', position: 'relative' }}>
-      <TopBar here={4} steps={['Polyclinic', 'GP', 'Case', 'Brief', 'Encounter']} />
+      <TopBar
+        here={4}
+        steps={
+          mode === 'er'
+            ? ['Acil Servis', 'Triyaj', 'Vaka', 'Brifing', 'Muayene']
+            : ['Poliklinik', 'Pratisyen', 'Vaka', 'Brifing', 'Muayene']
+        }
+      />
 
       <div
         style={{
@@ -355,13 +401,18 @@ export function EncounterScreen() {
         }}
       >
         <Canvas
-          shadows
+          dpr={renderDpr()}
+          shadows={false}
+          frameloop="demand"
+          gl={{ antialias: false, alpha: false, powerPreference: 'high-performance', stencil: false }}
           camera={{ position: playerSpawn, fov: 55 }}
           style={{ background: 'linear-gradient(#f0ebe1, #e3dac7)' }}
         >
+          <FramePacer fps={pointerLocked ? 30 : 8} paused={examineOpen} />
           <AdaptiveCameraFov />
           <Suspense fallback={<Loader />}>
             <Polyclinic
+              mode={mode}
               voiceActive={voiceActive && !examineOpen}
               onCloseVoice={() => setVoiceActive(false)}
             />
@@ -400,7 +451,7 @@ export function EncounterScreen() {
             }}
             style={{ fontSize: 14, padding: '12px 18px' }}
           >
-            End consultation →
+            Görüşmeyi bitir →
           </button>
         </div>
 
@@ -427,7 +478,7 @@ export function EncounterScreen() {
         >
           {pointerLocked ? (
             <>
-              Just talk — voice is live · <Kbd>E</Kbd> examine · <Kbd>T</Kbd> mute · <Kbd>Esc</Kbd> release
+              Sadece konuş — ses canlı · <Kbd>E</Kbd> muayene · <Kbd>T</Kbd> sustur · <Kbd>Esc</Kbd> bırak
             </>
           ) : (
             <>
@@ -435,7 +486,7 @@ export function EncounterScreen() {
                 className={voiceActive ? 'dot breathe' : 'dot'}
                 style={{ background: voiceActive ? 'var(--peach-deep)' : 'var(--ink-soft)' }}
               />
-              {voiceActive ? 'Voice live' : 'Voice muted'} · click the room to look around · <Kbd>E</Kbd> examine · <Kbd>T</Kbd> mute
+              {voiceActive ? 'Ses paneli açık' : 'Ses kapalı'} · bakmak için odaya tıkla · <Kbd>E</Kbd> muayene · <Kbd>T</Kbd> sustur
             </>
           )}
         </div>
@@ -472,9 +523,13 @@ export function EncounterScreen() {
               store.finishPolyclinicCase();
               disposePatientConversation(POLYCLINIC_BED_INDEX);
 
-              // 5. Auto-load the next patient from the active clinic.
-              //    FloatingVoicePanel re-keys on patient.case.id and
-              //    fires the new patient's greeting automatically.
+              // 5. Polyclinic: auto-load the next patient from the active
+              //    clinic. ER: hand control back to the board, which already
+              //    promoted the next waiting case into the freed bed.
+              if (mode === 'er') {
+                store.setScreen('endConfirm');
+                return;
+              }
               const nextId = store.pickNextCaseId();
               if (nextId) {
                 store.acceptNextPatient(nextId);

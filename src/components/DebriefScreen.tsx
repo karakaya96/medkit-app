@@ -20,11 +20,11 @@ import type { ActivePatient, PatientCase } from '../game/types';
 // ── verdict / colour mapping ───────────────────────────────────────
 
 const GLOBAL_HEADLINE: Record<VerdictBand, string> = {
-  excellent: 'Excellent — top tier',
-  good: 'Good — solid case',
-  satisfactory: 'Satisfactory — good effort',
-  borderline: 'Borderline — worth re-running',
-  'clear-fail': 'Clear fail — let\u2019s restart',
+  excellent: 'Mükemmel — üst seviye',
+  good: 'İyi — sağlam vaka',
+  satisfactory: 'Yeterli — iyi çaba',
+  borderline: 'Sınırda — tekrar denenmeli',
+  'clear-fail': 'Başarısız — yeniden başlayalım',
 };
 
 const GLOBAL_BG: Record<VerdictBand, string> = {
@@ -64,9 +64,9 @@ function DomainRing({ label, score }: DomainRingProps) {
   const c = 2 * Math.PI * r;
   const color = RING_COLOR[score.verdict];
   const qualitative =
-    score.verdict === 'excellent' || score.verdict === 'good' ? 'on target' :
-    score.verdict === 'satisfactory' ? 'fair' :
-    'work needed';
+    score.verdict === 'excellent' || score.verdict === 'good' ? 'hedefte' :
+    score.verdict === 'satisfactory' ? 'orta' :
+    'geliştirilmeli';
   return (
     <div
       style={{
@@ -139,9 +139,9 @@ const CRITERION_STYLES: Record<
   CriterionProps['status'],
   { icon: string; color: string; label: string; iconColor: string }
 > = {
-  met: { icon: '\u2713', color: 'var(--mint)', label: 'MET', iconColor: 'var(--mint-deep)' },
-  'partially-met': { icon: '~', color: 'var(--butter)', label: 'PARTIAL', iconColor: 'var(--butter-deep)' },
-  missed: { icon: '\u00D7', color: 'var(--rose)', label: 'MISSED', iconColor: 'var(--rose-deep)' },
+  met: { icon: '\u2713', color: 'var(--mint)', label: 'KARŞILANDI', iconColor: 'var(--mint-deep)' },
+  'partially-met': { icon: '~', color: 'var(--butter)', label: 'KISMEN', iconColor: 'var(--butter-deep)' },
+  missed: { icon: '\u00D7', color: 'var(--rose)', label: 'KAÇIRILDI', iconColor: 'var(--rose-deep)' },
 };
 
 function Criterion({ status, text, evidence, cite }: CriterionProps) {
@@ -275,7 +275,7 @@ function ActionChips({ patient, c }: { patient: ActivePatient; c: PatientCase })
     });
   }
   if (chips.length === 0) {
-    chips.push({ key: 'none', label: 'No actions taken during the encounter', tone: 'plain' });
+    chips.push({ key: 'none', label: 'Görüşmede işlem yapılmadı', tone: 'plain' });
   }
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -311,7 +311,7 @@ function StatusBanner({
       }}
     >
       <div style={{ position: 'absolute', top: -14, left: 24 }} className="chip butter">
-        ATTENDING
+        HOCA
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
         <div className="floaty">
@@ -343,14 +343,14 @@ function StatusBanner({
 // ── Live grading progress — animated step-by-step banner ───────────
 
 const GRADING_STEPS = [
-  'Replaying your conversation with the patient',
-  'Auditing the questions you asked during history-taking',
-  'Cross-checking the differential against the chief complaint',
-  'Reviewing the tests you ordered for relevance and coverage',
-  'Inspecting your prescriptions against the diagnosis',
-  'Comparing your management plan to clinical guidelines',
-  'Scoring data gathering, clinical management & interpersonal',
-  'Drafting personalised feedback for each criterion',
+  'Hasta ile görüşmen yeniden oynatılıyor',
+  'Öyküde sorduğun sorular denetleniyor',
+  'Ayırıcı tanı başvuru şikayetiyle karşılaştırılıyor',
+  'İstediğin tetkiklerin uygunluğu ve kapsamı inceleniyor',
+  'Reçetelerin tanıya uygunluğu kontrol ediliyor',
+  'Yönetim planın klinik kılavuzlarla karşılaştırılıyor',
+  'Veri toplama, klinik yönetim ve kişilerarası beceriler puanlanıyor',
+  'Her kriter için kişisel geri bildirim yazılıyor',
 ];
 
 function GradingProgress({ partialNarration }: { partialNarration: string }) {
@@ -368,7 +368,7 @@ function GradingProgress({ partialNarration }: { partialNarration: string }) {
   if (partialNarration.length > 0) {
     return (
       <StatusBanner
-        title={'The attending is grading\u2026'}
+        title={'Hoca değerlendiriyor\u2026'}
         body={truncate(partialNarration, 320)}
         bg="var(--sky)"
       />
@@ -387,7 +387,7 @@ function GradingProgress({ partialNarration }: { partialNarration: string }) {
       }}
     >
       <div style={{ position: 'absolute', top: -14, left: 24 }} className="chip butter">
-        ATTENDING
+        HOCA
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
         <div className="floaty">
@@ -543,35 +543,42 @@ export function DebriefScreen() {
 
   return (
     <div className="screen paper" style={{ overflowY: 'auto' }}>
-      <TopBar here={5} steps={['Polyclinic', 'GP', 'Case', 'Brief', 'Encounter', 'Debrief']} />
+      <TopBar
+        here={5}
+        steps={
+          state.encounterMode === 'er'
+            ? ['Acil Servis', 'Triyaj', 'Vaka', 'Brifing', 'Muayene', 'Değerlendirme']
+            : ['Poliklinik', 'Pratisyen', 'Vaka', 'Brifing', 'Muayene', 'Değerlendirme']
+        }
+      />
 
       <div style={{ padding: '28px 36px 60px', maxWidth: 1080, margin: '0 auto' }}>
         {!c || !patient ? (
           <StatusBanner
-            title="No active case to debrief"
-            body="The encounter has already been cleared. Pick a new case from the library to start fresh."
+            title="Değerlendirilecek aktif vaka yok"
+            body="Görüşme zaten kapatıldı. Yeni bir vakayla başlamak için kütüphaneden vaka seç."
             bg="var(--cream-2)"
           />
         ) : status === 'starting' || status === 'idle' ? (
           <StatusBanner
-            title={'Preparing your debrief\u2026'}
-            body={`Packaging the encounter and the rubric (${summarise(debriefRequest)}). The attending will start grading in a moment.`}
+            title={'Değerlendirmen hazırlanıyor\u2026'}
+            body={`Görüşme ve değerlendirme ölçütleri paketleniyor (${summarise(debriefRequest)}). Hoca birazdan puanlamaya başlayacak.`}
             bg="var(--sky)"
           />
         ) : status === 'streaming' && !evaluation ? (
           <GradingProgress partialNarration={partialNarration} />
         ) : status === 'error' ? (
           <StatusBanner
-            title={'We couldn\u2019t generate your debrief'}
-            body={error ?? 'Unknown error. The encounter is still saved \u2014 try again from the home screen.'}
+            title={'Değerlendirme oluşturulamadı'}
+            body={error ?? 'Bilinmeyen hata. Görüşme hâlâ kayıtlı — ana ekrandan tekrar dene.'}
             bg="var(--rose)"
           />
         ) : evaluation ? (
           <EvaluationBody evaluation={evaluation} patient={patient} c={c} />
         ) : (
           <StatusBanner
-            title="No evaluation yet"
-            body={'The attending hasn\u2019t emitted a result. If this persists, restart the encounter.'}
+            title="Henüz değerlendirme yok"
+            body={'Hoca bir sonuç üretmedi. Bu durum devam ederse görüşmeyi yeniden başlat.'}
             bg="var(--cream-2)"
           />
         )}
@@ -581,17 +588,17 @@ export function DebriefScreen() {
             type="button"
             className="btn-plush ghost"
             style={{ flex: 1 }}
-            onClick={() => store.setScreen('mode')}
+            onClick={() => store.setScreen(state.encounterMode === 'er' ? 'er' : 'mode')}
           >
-            {'\u2190 Back to polyclinic'}
+            {state.encounterMode === 'er' ? '\u2190 Acil servise dön' : '\u2190 Polikliniklere dön'}
           </button>
           <button
             type="button"
             className="btn-plush primary"
             style={{ flex: 1.6 }}
-            onClick={() => store.setScreen('library')}
+            onClick={() => store.setScreen(state.encounterMode === 'er' ? 'er' : 'library')}
           >
-            {'Next case \u2192'}
+            {state.encounterMode === 'er' ? 'Triyaj panosuna dön \u2192' : 'Sıradaki vaka \u2192'}
           </button>
         </div>
       </div>
@@ -600,9 +607,9 @@ export function DebriefScreen() {
 }
 
 function summarise(req: ReturnType<typeof buildDebriefRequest> | null): string {
-  if (!req) return 'no data';
+  if (!req) return 'veri yok';
   const s = summariseRequest(req);
-  return `${s.criterion_count} criteria \u00B7 ${s.guideline_count} guideline${s.guideline_count === 1 ? '' : 's'} \u00B7 ${s.rec_count} recs`;
+  return `${s.criterion_count} kriter \u00B7 ${s.guideline_count} kılavuz \u00B7 ${s.rec_count} öneri`;
 }
 
 function truncate(s: string, n: number): string {
@@ -631,7 +638,7 @@ function EvaluationBody({ evaluation, patient, c }: BodyProps) {
     for (const cr of rubric.interpersonal) labelByCriterionId.set(cr.criterion_id, cr.label);
   }
   const elapsedSec = patient.arrivedAt ? Math.round((Date.now() - patient.arrivedAt) / 1000) : 0;
-  const elapsedLabel = `${Math.floor(elapsedSec / 60)} min ${elapsedSec % 60} sec`;
+  const elapsedLabel = `${Math.floor(elapsedSec / 60)} dk ${elapsedSec % 60} sn`;
 
   return (
     <>
@@ -646,7 +653,7 @@ function EvaluationBody({ evaluation, patient, c }: BodyProps) {
           }}
         >
           <div className="chip" style={{ background: 'white', marginBottom: 8 }}>
-            {'\u26A0 SAFETY BREACH'}
+            {'\u26A0 GÜVENLİK İHLALİ'}
           </div>
           <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.4 }}>
             {evaluation.safety_breach.what}
@@ -685,7 +692,7 @@ function EvaluationBody({ evaluation, patient, c }: BodyProps) {
         }}
       >
         <div style={{ position: 'absolute', top: -14, left: 24 }} className="chip butter">
-          YOUR MARK
+          NOTUN
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
           <div className="floaty">
@@ -713,7 +720,7 @@ function EvaluationBody({ evaluation, patient, c }: BodyProps) {
                 letterSpacing: '.06em',
               }}
             >
-              VERDICT
+              KARAR
             </div>
             <h1 style={{ fontSize: 38, lineHeight: 1.05, margin: '4px 0 8px' }}>
               {GLOBAL_HEADLINE[verdict].split(' \u2014 ')[0]}{' '}
@@ -729,26 +736,26 @@ function EvaluationBody({ evaluation, patient, c }: BodyProps) {
       </div>
 
       <div className="plush" style={{ padding: 18, marginBottom: 22 }}>
-        <SectionLabel>DOMAIN SCORES</SectionLabel>
+        <SectionLabel>ALAN PUANLARI</SectionLabel>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-          <DomainRing label="Data Gathering" score={evaluation.domain_scores.data_gathering} />
-          <DomainRing label="Clinical Management" score={evaluation.domain_scores.clinical_management} />
-          <DomainRing label="Interpersonal" score={evaluation.domain_scores.interpersonal} />
+          <DomainRing label="Veri Toplama" score={evaluation.domain_scores.data_gathering} />
+          <DomainRing label="Klinik Yönetim" score={evaluation.domain_scores.clinical_management} />
+          <DomainRing label="Kişilerarası" score={evaluation.domain_scores.interpersonal} />
         </div>
       </div>
 
       {(dgItems.length + cmItems.length + ipItems.length) > 0 && (
         <div className="plush" style={{ padding: 18, marginBottom: 22 }}>
-          <SectionLabel>PER-CRITERION</SectionLabel>
+          <SectionLabel>KRİTER BAZINDA</SectionLabel>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {dgItems.length > 0 && (
-              <CriterionGroup title="Data gathering" items={dgItems} labelMap={labelByCriterionId} />
+              <CriterionGroup title="Veri toplama" items={dgItems} labelMap={labelByCriterionId} />
             )}
             {cmItems.length > 0 && (
-              <CriterionGroup title="Clinical management" items={cmItems} labelMap={labelByCriterionId} />
+              <CriterionGroup title="Klinik yönetim" items={cmItems} labelMap={labelByCriterionId} />
             )}
             {ipItems.length > 0 && (
-              <CriterionGroup title="Interpersonal" items={ipItems} labelMap={labelByCriterionId} />
+              <CriterionGroup title="Kişilerarası" items={ipItems} labelMap={labelByCriterionId} />
             )}
           </div>
         </div>
@@ -758,7 +765,7 @@ function EvaluationBody({ evaluation, patient, c }: BodyProps) {
         {evaluation.highlights.length > 0 && (
           <div className="plush" style={{ background: 'var(--mint)', padding: 16 }}>
             <div className="chip" style={{ background: 'white', marginBottom: 10 }}>
-              {'\u2713 HIGHLIGHTS'}
+              {'\u2713 GÜÇLÜ YÖNLER'}
             </div>
             <ul style={{ margin: 0, paddingLeft: 18, fontWeight: 700, fontSize: 14, lineHeight: 1.6 }}>
               {evaluation.highlights.map((h, i) => <li key={i}>{h}</li>)}
@@ -768,7 +775,7 @@ function EvaluationBody({ evaluation, patient, c }: BodyProps) {
         {evaluation.improvements.length > 0 && (
           <div className="plush" style={{ background: 'var(--peach)', padding: 16 }}>
             <div className="chip" style={{ background: 'white', marginBottom: 10 }}>
-              {'\u2191 NEXT TIME'}
+              {'\u2191 GELECEK SEFER'}
             </div>
             <ul style={{ margin: 0, paddingLeft: 18, fontWeight: 700, fontSize: 14, lineHeight: 1.6 }}>
               {evaluation.improvements.map((h, i) => <li key={i}>{h}</li>)}
@@ -778,7 +785,7 @@ function EvaluationBody({ evaluation, patient, c }: BodyProps) {
       </div>
 
       <div className="plush" style={{ padding: 16, marginBottom: 22 }}>
-        <SectionLabel>ACTIONS YOU TOOK</SectionLabel>
+        <SectionLabel>YAPTIKLARIN</SectionLabel>
         <ActionChips patient={patient} c={c} />
       </div>
 
@@ -793,9 +800,9 @@ function EvaluationBody({ evaluation, patient, c }: BodyProps) {
         }}
       >
         <div>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>Encounter</div>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>Görüşme</div>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>
-            {`${elapsedLabel} \u00B7 ${patient.askedQuestionIds.length} history questions \u00B7 ${patient.orderedTestIds.length} tests \u00B7 ${patient.givenTreatmentIds.length} treatments`}
+            {`${elapsedLabel} \u00B7 ${patient.askedQuestionIds.length} öykü sorusu \u00B7 ${patient.orderedTestIds.length} tetkik \u00B7 ${patient.givenTreatmentIds.length} tedavi`}
           </div>
         </div>
       </div>

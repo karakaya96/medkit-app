@@ -7,7 +7,7 @@ import { POLYCLINIC_DIAGNOSIS_LABELS, getCaseSpecialty } from '../data/polyclini
 import { MEDICATIONS, CATEGORY_LABELS, SPECIALTY_MEDICATION_CATEGORIES, medicationById, type Medication, type MedicationCategory } from '../data/medications';
 import { CLINIC_LABELS } from '../game/clinic';
 import { getExistingConversation } from '../voice/conversationStore';
-import type { ChatMessage } from '../voice/claude';
+import type { ChatMessage } from '../voice/patientStream';
 
 type Tab = 'history' | 'chat' | 'tests' | 'results' | 'diagnose' | 'rx';
 
@@ -45,11 +45,11 @@ export function ExamineOverlay({ onClose, onDispatch }: Props) {
   const rxUnlocked = submitted !== null;
 
   const tabs: Array<{ id: Tab; label: string; badge?: number | string; disabled?: boolean }> = [
-    { id: 'history', label: 'History', badge: `${asked.size}/${c.anamnesis.length}` },
-    { id: 'chat', label: 'Chat' },
-    { id: 'tests', label: 'Order tests' },
-    { id: 'results', label: 'Results', badge: newResultsCount > 0 ? newResultsCount : undefined },
-    { id: 'diagnose', label: 'Diagnose' },
+    { id: 'history', label: 'Öykü', badge: `${asked.size}/${c.anamnesis.length}` },
+    { id: 'chat', label: 'Sohbet' },
+    { id: 'tests', label: 'Tetkik iste' },
+    { id: 'results', label: 'Sonuçlar', badge: newResultsCount > 0 ? newResultsCount : undefined },
+    { id: 'diagnose', label: 'Tanı' },
     { id: 'rx', label: 'Rx', badge: rxCount > 0 ? rxCount : undefined, disabled: !rxUnlocked },
   ];
 
@@ -97,17 +97,17 @@ export function ExamineOverlay({ onClose, onDispatch }: Props) {
         >
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
             <span className="chip butter" style={{ fontSize: 11 }}>
-              EXAMINE
+              MUAYENE
             </span>
             <h2 style={{ margin: 0, fontSize: 22, lineHeight: 1.1 }}>{c.name}</h2>
             <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--ink-2)' }}>
-              {c.age} · {c.gender === 'F' ? 'Female' : 'Male'}
+              {c.age} yaş · {c.gender === 'F' ? 'Kadın' : 'Erkek'}
             </span>
             <span
               className={`chip ${c.severity === 'critical' ? 'rose' : c.severity === 'urgent' ? 'peach' : 'mint'}`}
               style={{ fontSize: 11 }}
             >
-              {c.severity}
+              {c.severity === 'critical' ? 'kritik' : c.severity === 'urgent' ? 'öncelikli' : 'stabil'}
             </span>
           </div>
           <button
@@ -115,9 +115,9 @@ export function ExamineOverlay({ onClose, onDispatch }: Props) {
             className="btn-plush ghost"
             onClick={onClose}
             style={{ fontSize: 13, padding: '8px 16px' }}
-            title="Close (Esc)"
+            title="Kapat (Esc)"
           >
-            ✕ Close
+            ✕ Kapat
           </button>
         </div>
 
@@ -135,7 +135,7 @@ export function ExamineOverlay({ onClose, onDispatch }: Props) {
           <Vital icon="❤" label="HR" value={String(c.vitals.hr)} unit="bpm" tone="var(--rose)" />
           <Vital icon="⌥" label="BP" value={c.vitals.bp} unit="mmHg" tone="var(--peach)" />
           <Vital icon="○" label="SpO₂" value={`${c.vitals.spo2}`} unit="%" tone="var(--mint)" />
-          <Vital icon="☼" label="Temp" value={c.vitals.temp.toFixed(1)} unit="°C" tone="var(--butter)" />
+          <Vital icon="☼" label="Ateş" value={c.vitals.temp.toFixed(1)} unit="°C" tone="var(--butter)" />
           <Vital icon="~" label="RR" value={String(c.vitals.rr)} unit="/min" tone="var(--sky)" />
         </div>
 
@@ -159,7 +159,7 @@ export function ExamineOverlay({ onClose, onDispatch }: Props) {
                 className="tap"
                 onClick={() => !disabled && setTab(t.id)}
                 disabled={disabled}
-                title={disabled ? 'Submit a diagnosis first' : undefined}
+                title={disabled ? 'Önce tanı gir' : undefined}
                 style={{
                   background: active ? 'var(--butter)' : 'white',
                   border: '3px solid var(--line)',
@@ -240,8 +240,8 @@ export function ExamineOverlay({ onClose, onDispatch }: Props) {
             justifyContent: 'space-between',
           }}
         >
-          <span>Press Esc to close · {ordered.size} test{ordered.size === 1 ? '' : 's'} ordered</span>
-          <span>{submitted ? `Diagnosis: ${diagLabel(submitted)}` : 'Diagnosis pending'}</span>
+          <span>Kapatmak için Esc · {ordered.size} tetkik istendi</span>
+          <span>{submitted ? `Tanı: ${diagLabel(submitted)}` : 'Tanı bekleniyor'}</span>
         </div>
       </div>
     </div>
@@ -292,7 +292,7 @@ function HistoryTab({ patient }: { patient: NonNullable<ReturnType<typeof useGam
   const unanswered = c.anamnesis.filter((q) => !asked.has(q.id));
 
   if (c.anamnesis.length === 0) {
-    return <div style={{ color: 'var(--ink-2)', fontWeight: 700 }}>No anamnesis questions for this case.</div>;
+    return <div style={{ color: 'var(--ink-2)', fontWeight: 700 }}>Bu vaka için öykü sorusu yok.</div>;
   }
 
   return (
@@ -309,7 +309,7 @@ function HistoryTab({ patient }: { patient: NonNullable<ReturnType<typeof useGam
             gap: 4,
           }}
         >
-          <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--ink-2)' }}>You asked</div>
+          <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--ink-2)' }}>Sordun</div>
           <div style={{ fontWeight: 700, fontSize: 14 }}>{q.question}</div>
           <div style={{ marginTop: 4, fontSize: 14, fontStyle: 'italic' }}>
             <strong>{c.name.split(' ')[0]}:</strong> "{q.answer}"
@@ -458,7 +458,7 @@ function TestsTab({ patient }: { patient: NonNullable<ReturnType<typeof useGameS
       {(['bedside', 'lab', 'imaging'] as const).map((cat) => {
         const list = groups[cat];
         const available = list.filter((t) => !ordered.has(t.id));
-        const label = cat === 'bedside' ? 'Bedside' : cat === 'lab' ? 'Laboratory' : 'Imaging';
+        const label = cat === 'bedside' ? 'Yatak başı' : cat === 'lab' ? 'Laboratuvar' : 'Görüntüleme';
         const icon = cat === 'bedside' ? '🩺' : cat === 'lab' ? '🧬' : '📷';
         const tone = cat === 'bedside' ? 'var(--mint)' : cat === 'lab' ? 'var(--sky)' : 'var(--peach)';
         return (
@@ -645,7 +645,7 @@ function ResultsTab({ patient }: { patient: NonNullable<ReturnType<typeof useGam
   if (patient.orderedTestIds.length === 0) {
     return (
       <div className="plush" style={{ padding: 14, fontWeight: 700, color: 'var(--ink-2)' }}>
-        No tests ordered yet — head to <strong>Order tests</strong>.
+        Henüz tetkik istenmedi — <strong>Tetkik iste</strong> sekmesine git.
       </div>
     );
   }
@@ -713,7 +713,7 @@ function ResultsTab({ patient }: { patient: NonNullable<ReturnType<typeof useGam
                       alt={img.caption}
                       loading="lazy"
                       onClick={() => setZoomed({ url: img.url, caption: img.caption, credit: img.credit })}
-                      title="Click to zoom"
+                      title="Büyütmek için tıkla"
                       style={{
                         display: 'block',
                         width: '100%',
@@ -767,7 +767,7 @@ function ResultsTab({ patient }: { patient: NonNullable<ReturnType<typeof useGam
                   border: '2px solid var(--line)',
                 }}
               >
-                {report?.text ?? 'Pending…'}
+                {report?.text ?? 'Bekliyor…'}
               </div>
             </details>
           </details>
@@ -778,7 +778,7 @@ function ResultsTab({ patient }: { patient: NonNullable<ReturnType<typeof useGam
         <div
           onClick={() => setZoomed(null)}
           role="dialog"
-          aria-label="Imaging viewer"
+          aria-label="Görüntüleme görüntüleyici"
           style={{
             position: 'fixed',
             inset: 0,
@@ -812,9 +812,9 @@ function ResultsTab({ patient }: { patient: NonNullable<ReturnType<typeof useGam
               cursor: 'pointer',
               fontFamily: 'inherit',
             }}
-            title="Close (Esc)"
+            title="Kapat (Esc)"
           >
-            ✕ Close
+            ✕ Kapat
           </button>
           <img
             src={zoomed.url}
@@ -1052,7 +1052,7 @@ function ChatTab({ patientName }: { patientName: string }) {
                 marginBottom: 2,
               }}
             >
-              {mine ? 'You' : patientName.split(' ')[0]}
+              {mine ? 'Sen' : patientName.split(' ')[0]}
             </div>
             {m.content}
           </div>
@@ -1307,7 +1307,7 @@ function RxTab({
                     color: 'var(--ink-2)',
                     fontSize: 14,
                   }}
-                  title="Remove"
+                  title="Kaldır"
                 >
                   ✕
                 </button>
@@ -1340,7 +1340,7 @@ function RxTab({
             onClick={onSubmitAll}
             style={{ fontSize: 14, padding: '10px 18px' }}
           >
-            ➕ Add {pickedList.length} to prescription
+            ➕ Reçeteye {pickedList.length} ekle
           </button>
         </div>
       )}
@@ -1351,7 +1351,7 @@ function RxTab({
         style={{ fontSize: 18, padding: '14px 0' }}
         onClick={onDispatch}
       >
-        {submitted.length === 0 ? 'Dispatch without prescription →' : 'Dispatch patient →'}
+        {submitted.length === 0 ? 'Reçetesiz taburcu et →' : 'Hastayı taburcu et →'}
       </button>
     </div>
   );

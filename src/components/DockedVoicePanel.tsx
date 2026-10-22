@@ -72,12 +72,12 @@ export function DockedVoicePanel({ patientName, patientLabel }: Props) {
 
   const firstName = patientName.split(' ')[0];
   const statusLabel =
-    status === 'listening' ? 'LISTENING…' :
-    status === 'thinking' ? 'THINKING…' :
-    status === 'speaking' ? `${firstName.toUpperCase()} SPEAKING` :
-    status === 'loading' ? 'CONNECTING…' :
-    status === 'ready' ? 'LIVE' :
-    'OFFLINE';
+    status === 'listening' ? 'DİNLİYOR…' :
+    status === 'thinking' ? 'DÜŞÜNÜYOR…' :
+    status === 'speaking' ? `${firstName.toUpperCase()} KONUŞUYOR` :
+    status === 'loading' ? 'BAĞLANIYOR…' :
+    status === 'ready' ? 'CANLI' :
+    'ÇEVRİMDIŞI';
 
   const live = status === 'listening' || status === 'speaking' || status === 'thinking' || status === 'ready';
   const statusColor =
@@ -87,7 +87,7 @@ export function DockedVoicePanel({ patientName, patientLabel }: Props) {
     live ? 'var(--mint-deep)' : 'var(--ink-soft)';
 
   const showSubtitle = !!subtitle.text && subtitle.text !== '…';
-  const speakerLabel = subtitle.who === 'you' ? 'You' : firstName;
+  const speakerLabel = subtitle.who === 'you' ? 'Sen' : firstName;
 
   // Auto-scroll to bottom when subtitle changes.
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -193,7 +193,7 @@ export function DockedVoicePanel({ patientName, patientLabel }: Props) {
             "{subtitle.text}"
           </>
         ) : (
-          'Voice live · just talk'
+          'Ses canlı · sadece konuş'
         )}
       </div>
     </div>

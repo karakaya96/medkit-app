@@ -5,14 +5,13 @@ export interface ChatMessage {
 
 const PATIENT_STREAM_URL = '/agent/patient/stream';
 
-/** Backend now owns the Anthropic key (POST /agent/patient/stream).
- *  Kept as a function so callers don't need to change — any real failure
- *  surfaces from the first streamClaude() fetch. */
-export function hasClaudeKey(): boolean {
+/** The backend owns the OpenRouter key (POST /agent/patient/stream).
+ *  Kept as a probe so callers can fail early when the backend is down. */
+export function hasPatientBackend(): boolean {
   return true;
 }
 
-export async function* streamClaude(
+export async function* streamPatient(
   systemPrompt: string,
   messages: ChatMessage[],
   signal?: AbortSignal

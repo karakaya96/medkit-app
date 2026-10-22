@@ -9,7 +9,8 @@
     "preview": "node node_modules/vite/bin/vite.js preview",
     "verify": "node scripts/verify/run-all.ts",
     "test": "node scripts/test/run-all.ts",
-    "audit:imaging": "node scripts/verify/imaging-coverage.ts"
+    "audit:imaging": "node scripts/verify/imaging-coverage.ts",
+    "voice:doctor": "bash scripts/voice/doctor.sh"
   },
   "dependencies": {
     "@react-three/drei": "^9.122.0",

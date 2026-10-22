@@ -1,7 +1,6 @@
 /**
- * Tests for the custom-tool permission policy and schema parity between
- * the browser-side Zod registry (`src/agents/customTools.ts`) and the
- * backend JSON list (`backend/server.py`).
+ * Tests for the debrief evaluation schema and the legacy custom-tool
+ * registry kept for the renderer.
  *
  * Runs under Node 22+'s built-in test runner with native TypeScript
  * support — zero extra deps. Invoke via `npm test` (or directly with
@@ -10,12 +9,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import {
   CUSTOM_TOOL_NAMES,
+  caseEvaluationInput,
   CUSTOM_TOOL_PERMISSIONS,
   customToolSchemas,
   flagCriticalFindingInput,
@@ -23,9 +20,6 @@ import {
   parseCustomToolUse,
   type CustomToolName,
 } from '../../src/agents/customTools.ts';
-
-const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '../../..');
-const BACKEND_SERVER = resolve(REPO_ROOT, 'backend/server.py');
 
 test('every custom tool has a permission entry', () => {
   for (const name of CUSTOM_TOOL_NAMES) {
@@ -105,62 +99,46 @@ test('parseCustomToolUse surfaces per-field errors', () => {
   if (!result.ok) assert.match(result.error, /patient_id/);
 });
 
-test('backend/server.py exposes every name from CUSTOM_TOOL_NAMES', () => {
-  const py = readFileSync(BACKEND_SERVER, 'utf8');
-  for (const name of CUSTOM_TOOL_NAMES) {
-    const re = new RegExp(`"name":\\s*"${name}"`);
-    assert.match(
-      py,
-      re,
-      `backend/server.py is missing a "name": "${name}" entry in MEDKIT_CUSTOM_TOOLS`,
-    );
-  }
+const VALID_EVALUATION = {
+  case_id: 'er-01',
+  global_rating: 'good',
+  domain_scores: {
+    data_gathering: { raw: 2, max: 3, verdict: 'good' },
+    clinical_management: { raw: 1, max: 1, verdict: 'excellent' },
+    interpersonal: { raw: 1, max: 2, verdict: 'borderline' },
+  },
+  criteria: [
+    {
+      criterion_id: 'dg-1',
+      domain: 'data_gathering',
+      verdict: 'met',
+      evidence: 'Ağrının başlangıcını ve yayılımını sordu.',
+      guideline_ref: null,
+    },
+  ],
+  safety_breach: null,
+  highlights: ['Sistematik öykü.'],
+  improvements: ['EKG daha erken istenebilirdi.'],
+  narrative: 'Genel olarak güvenli bir yaklaşım.',
+};
+
+test('caseEvaluationInput accepts a well-formed evaluation', () => {
+  const result = caseEvaluationInput.safeParse(VALID_EVALUATION);
+  assert.ok(result.success, 'well-formed evaluation should parse');
 });
 
-test('backend/server.py does not advertise tools missing from the frontend registry', () => {
-  const py = readFileSync(BACKEND_SERVER, 'utf8');
-  // Extract every "name": "..." inside MEDKIT_CUSTOM_TOOLS. We scope to the
-  // list body so we don't pick up unrelated "name": "..." pairs (e.g.
-  // AGENT_NAME / ENV_NAME at the top).
-  const listStart = py.indexOf('MEDKIT_CUSTOM_TOOLS: list[dict] = [');
-  assert.ok(listStart >= 0, 'MEDKIT_CUSTOM_TOOLS list not found in server.py');
-  // Tolerate CRLF (Windows checkout) as well as LF.
-  const terminator = py.slice(listStart).match(/\r?\n\]\r?\n/);
-  assert.ok(
-    terminator && terminator.index !== undefined,
-    'MEDKIT_CUSTOM_TOOLS list terminator not found',
-  );
-  const listEnd = listStart + terminator.index;
-  const body = py.slice(listStart, listEnd);
-  const matches = Array.from(body.matchAll(/"name":\s*"([a-z_]+)"/g));
-  const backendNames = new Set(matches.map((m) => m[1]));
-  const frontendNames = new Set<string>(CUSTOM_TOOL_NAMES);
-  for (const name of backendNames) {
-    assert.ok(
-      frontendNames.has(name),
-      `backend advertises tool "${name}" that the frontend registry doesn't know about`,
-    );
-  }
-  // Also: every frontend name must appear — defense in depth vs the
-  // previous test.
-  for (const name of frontendNames) {
-    assert.ok(
-      backendNames.has(name),
-      `frontend knows about "${name}" but backend doesn't advertise it`,
-    );
-  }
+test('caseEvaluationInput rejects an unknown verdict band', () => {
+  const result = caseEvaluationInput.safeParse({
+    ...VALID_EVALUATION,
+    global_rating: 'perfect',
+  });
+  assert.ok(!result.success);
 });
 
-test('system prompt mentions the confirm-gated tool', () => {
-  const py = readFileSync(BACKEND_SERVER, 'utf8');
-  assert.match(
-    py,
-    /flag_critical_finding/,
-    'system prompt should mention flag_critical_finding so the agent knows to use it',
-  );
-  assert.match(
-    py,
-    /confirm-gated|explicit human confirmation|approve\/decline/,
-    'system prompt should explain the confirm-gate semantics',
-  );
+test('caseEvaluationInput requires a narrative', () => {
+  const result = caseEvaluationInput.safeParse({
+    ...VALID_EVALUATION,
+    narrative: '',
+  });
+  assert.ok(!result.success);
 });

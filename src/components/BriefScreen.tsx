@@ -23,21 +23,25 @@ function buildVitals(p?: { hr: number; bp: string; spo2: number; temp: number; r
 export function BriefScreen() {
   const tweaks = useTweaks();
   const caseId = useStore((s) => s.selectedCaseId);
+  const mode = useStore((s) => s.encounterMode);
   const c = getCase(caseId);
   const patient = getPatientCase(caseId);
   const VITALS = buildVitals(patient?.vitals);
   const chiefComplaint = patient?.chiefComplaint ?? c.complaint;
-  const arrivalBlurb = patient?.arrivalBlurb ?? 'Looks well. No acute distress.';
+  const arrivalBlurb = patient?.arrivalBlurb ?? 'Genel durumu iyi. Akut sıkıntı yok.';
   const severityChip =
     patient?.severity === 'critical'
-      ? { label: 'critical · resuscitate', tone: 'rose' }
+      ? { label: 'kritik · resüsitasyon', tone: 'rose' }
       : patient?.severity === 'urgent'
-        ? { label: 'urgent', tone: 'peach' }
-        : { label: 'first presentation', tone: 'rose' };
+        ? { label: 'öncelikli', tone: 'peach' }
+        : { label: 'stabil', tone: 'mint' };
 
   return (
     <div className="screen paper" style={{ position: 'relative' }}>
-      <TopBar here={3} steps={['Polyclinic', 'GP', 'Case', 'Brief']} />
+      <TopBar
+        here={3}
+        steps={mode === 'er' ? ['Acil Servis', 'Triyaj', 'Vaka', 'Brifing'] : ['Poliklinik', 'Pratisyen', 'Vaka', 'Brifing']}
+      />
 
       <DoodleScatter
         items={[
@@ -77,13 +81,13 @@ export function BriefScreen() {
               marginBottom: 16,
             }}
           >
-            <span className="chip butter">DOORWAY BRIEF</span>
-            <span className="chip">Case #07</span>
+            <span className="chip butter">KAPI ÖNÜ BRİFİNGİ</span>
+            <span className="chip">VAKA</span>
           </div>
 
           <h1 style={{ fontSize: 32, lineHeight: 1.1, marginBottom: 4 }}>{c.name}</h1>
           <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink-2)', marginBottom: 16 }}>
-            {c.age} y · {c.sex === 'F' ? 'Female' : 'Male'} · {c.cond}
+            {c.age} yaş · {c.sex === 'F' ? 'Kadın' : 'Erkek'}
           </div>
 
           <div
@@ -106,7 +110,7 @@ export function BriefScreen() {
                 marginBottom: 4,
               }}
             >
-              CHIEF COMPLAINT
+              BAŞVURU ŞİKAYETİ
             </div>
             <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.35 }}>
               {`"${chiefComplaint}"`}
@@ -133,7 +137,7 @@ export function BriefScreen() {
                 marginBottom: 2,
               }}
             >
-              ON THE BENCH
+              SIRADAKİ HASTA
             </div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{arrivalBlurb}</div>
           </div>
@@ -157,12 +161,12 @@ export function BriefScreen() {
                 marginBottom: 6,
               }}
             >
-              YOUR TASK
+              GÖREVİN
             </div>
             <ol style={{ margin: 0, paddingLeft: 18, fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>
-              <li>Take a focused history</li>
-              <li>Examine if appropriate</li>
-              <li>Agree a plan with the patient</li>
+              <li>Odaklı bir öykü al</li>
+              <li>Gerekirse muayene et</li>
+              <li>Hasta ile bir plan üzerinde anlaş</li>
             </ol>
           </div>
         </div>
@@ -189,7 +193,7 @@ export function BriefScreen() {
               </div>
               <div>
                 <div style={{ fontWeight: 900, fontSize: 18 }}>{c.name.split(' ')[0]}</div>
-                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 700 }}>currently waiting</div>
+                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 700 }}>şu anda bekliyor</div>
                 <div style={{ marginTop: 6 }} className={`chip ${severityChip.tone}`}>
                   {severityChip.label}
                 </div>
@@ -208,7 +212,7 @@ export function BriefScreen() {
                 marginBottom: 8,
               }}
             >
-              TRIAGE VITALS
+              TRİYAJ VİTALLERİ
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
               {VITALS.map((v) => (
@@ -247,7 +251,7 @@ export function BriefScreen() {
                   textTransform: 'uppercase',
                 }}
               >
-                YOUR TIME
+                SÜREN
               </div>
               <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--peach-deep)' }}>8:00</div>
             </div>
@@ -267,13 +271,22 @@ export function BriefScreen() {
             </div>
           </div>
 
+          {mode === 'er' && (
+            <button
+              type="button"
+              className="btn-plush ghost"
+              onClick={() => store.setScreen('er')}
+            >
+              ← Triyaj panosuna dön
+            </button>
+          )}
           <button
             type="button"
             className="btn-plush primary breathe"
             style={{ fontSize: 22, padding: '18px 0' }}
             onClick={() => store.setScreen('encounter')}
           >
-            ✊ Knock and enter
+            ✊ Kapıyı çal ve gir
           </button>
         </div>
       </div>

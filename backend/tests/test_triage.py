@@ -26,7 +26,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-api03-test-dummy")
 os.environ.setdefault("OPENROUTER_API_KEY", "sk-or-v1-test-dummy")
 os.environ.setdefault("TRIAGE_MODEL", "test-triage-model")
 _SHARED_SECRET = "test-shared-secret-7fd1"

@@ -2,7 +2,7 @@
 
 Two Python processes power the simulator:
 
-1. **FastAPI server** (`server.py`) — Managed Agents proxy (`/agent/*`), OpenRouter patient-text-chat SSE (`/agent/patient/stream`), one-shot ESI triage (`/agent/triage/classify`), and the LiveKit token mint (`/voice/token`). Lives at `127.0.0.1:8787`.
+1. **FastAPI server** (`server.py`) — free-model debrief (`/agent/debrief`), patient-text-chat SSE (`/agent/patient/stream`), one-shot ESI triage (`/agent/triage/classify`), and the LiveKit token mint (`/voice/token`). Lives at `127.0.0.1:8787`.
 2. **LiveKit voice worker** (`voice_agent.py`) — joins every room created by `/voice/token`, runs local faster-whisper STT → Nemotron via OpenRouter (NVIDIA fallback) → local edge-tts TTS over WebRTC.
 
 Both must be running for real-time voice to work. `ffmpeg` must be on `PATH`.
@@ -14,7 +14,7 @@ The two processes use **separate venvs** so the worker's deps don't tangle with 
 ```bash
 cd backend
 
-# Server venv — FastAPI + Anthropic (Managed Agent) + OpenAI-compatible client.
+# Server venv — FastAPI + OpenAI-compatible client.
 python -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 
@@ -29,7 +29,6 @@ python -m venv .venv-voice
 
 Copy `.env.example` to `.env.local` and fill in:
 
-- `ANTHROPIC_API_KEY` — `medkit-attending` Managed Agent (Opus 4.7).
 - `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` — patient persona, triage, and voice-worker LLM.
 - `NVIDIA_API_KEY` — optional voice-worker fallback (`LLM_PROVIDER=nvidia`).
 - `PATIENT_MODEL`, `TRIAGE_MODEL`, `LLM_PROVIDER`, `NVIDIA_MODEL` — model routing without code changes.
@@ -37,7 +36,6 @@ Copy `.env.example` to `.env.local` and fill in:
 - `BACKEND_SHARED_SECRET` — non-loopback clients must send `x-medkit-auth`; if empty, only loopback clients are accepted.
 - `EHR_API_TOKEN` — credential-vault demo token.
 - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` — from LiveKit Cloud.
-- `MEDKIT_AGENT_ID`, `MEDKIT_ENV_ID` — leave blank on first run, paste back from `/agent/bootstrap`.
 
 ## Run
 
@@ -61,9 +59,10 @@ The worker logs `registered worker` once it's connected to LiveKit Cloud. From t
 
 ## Endpoints
 
-- `GET  /health` — public; backend + agent + voice config status (no agent/environment IDs).
+- `GET  /health` — public; backend + grading + voice config status (no secrets).
 - `POST /voice/token` — body `{caseId, systemPrompt, initialLine, gender}`. Pre-creates a LiveKit room with the persona payload as metadata, returns `{token, url, roomName}`.
-- `POST /agent/*` — Managed Agents proxy for the medkit-attending. See inline docs in `server.py`.
+- `POST /agent/debrief` — one-shot free-model OSCE grading; scores recomputed from rubric weights.
+- `POST /agent/patient/stream` / `/agent/triage/classify` — free-model text paths.
 - `POST /agent/patient/stream` — text-only patient persona SSE; used by the right-sidebar text chat.
 - `POST /agent/triage/classify` — one-shot ESI classification via `TRIAGE_MODEL`.
 

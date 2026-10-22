@@ -95,12 +95,12 @@ export function BackgroundMusic() {
       onClick={toggle}
       title={
         userMuted
-          ? 'Music muted — click to unmute'
+          ? 'Müzik kapalı — açmak için tıkla'
           : inSession
-            ? 'Music paused during session'
-            : 'Music on — click to mute'
+            ? 'Görüşme sırasında müzik duraklatıldı'
+            : 'Müzik açık — kapatmak için tıkla'
       }
-      aria-label={userMuted ? 'Unmute music' : 'Mute music'}
+      aria-label={userMuted ? 'Müziği aç' : 'Müziği kapat'}
       style={{
         position: 'fixed',
         top: 18,

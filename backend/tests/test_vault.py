@@ -24,10 +24,8 @@ import unittest
 from pathlib import Path
 
 # Stub required env BEFORE importing server — it otherwise refuses to
-# boot some paths. The ANTHROPIC_API_KEY value is a dummy; we never
-# call Anthropic in these tests.
+# boot some paths.
 os.environ["EHR_API_TOKEN"] = "vault-secret-test-token-93af2d"
-os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-api03-test-dummy")
 _SHARED_SECRET = "test-shared-secret-7fd1"
 os.environ["BACKEND_SHARED_SECRET"] = _SHARED_SECRET
 _AUTH_HEADERS = {"x-medkit-auth": _SHARED_SECRET}
@@ -157,22 +155,6 @@ class VaultEndpointTests(unittest.TestCase):
             if previous is not None:
                 os.environ["EHR_API_TOKEN"] = previous
 
-    # ─── tool registration sanity ──────────────────────────────
-    def test_lookup_tool_registered_in_MEDKIT_CUSTOM_TOOLS(self) -> None:
-        names = {t["name"] for t in server.MEDKIT_CUSTOM_TOOLS}
-        self.assertIn("lookup_ehr_history", names)
-
-    def test_vault_never_references_token_in_tool_description(self) -> None:
-        tool = next(
-            t for t in server.MEDKIT_CUSTOM_TOOLS if t["name"] == "lookup_ehr_history"
-        )
-        self.assertNotIn(_VAULT_TOKEN, str(tool))
-        self.assertNotIn(
-            "token", str(tool["input_schema"]).lower(),
-            "input schema must not ask the agent for a token",
-        )
-
-
 class AuthMiddlewareTests(unittest.TestCase):
     """The shared-secret gate must not be bypassable by client-controlled
     headers (Origin/Referer were previously trusted — that was a real hole)."""
@@ -219,8 +201,8 @@ class AuthMiddlewareTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["ok"])
-        self.assertNotIn("agent_id", body["agent"])
-        self.assertNotIn("environment_id", body["agent"])
+        self.assertNotIn("api_key", body["grading"])
+        self.assertNotIn("anthropic", body["grading"])
 
 
 class _CapturingHandler(logging.Handler):

@@ -196,8 +196,8 @@ export function CaseLibraryScreen() {
   };
 
   const clinicChips: Array<{ id: ClinicFilter; label: string; icon?: string }> = [
-    { id: 'all', label: 'All clinics', icon: '🌈' },
-    { id: 'red-flag', label: 'Red-flag only', icon: '🚩' },
+    { id: 'all', label: 'Tüm klinikler', icon: '🌈' },
+    { id: 'red-flag', label: 'Sadece kırmızı bayrak', icon: '🚩' },
     ...CLINIC_IDS.filter((id) => id !== 'all-specialties' && (grouped.get(id)?.length ?? 0) > 0).map(
       (id) => ({ id: id as ClinicFilter, label: CLINIC_LABELS[id], icon: CLINIC_ICON[id] }),
     ),
@@ -205,7 +205,7 @@ export function CaseLibraryScreen() {
 
   return (
     <div className="screen" style={{ background: 'var(--cream)' }}>
-      <TopBar here={2} steps={['Polyclinic', 'GP', 'Case']} />
+      <TopBar here={2} steps={['Poliklinik', 'Pratisyen', 'Vaka']} />
 
       {/* Header row: back button + title + shuffle */}
       <div
@@ -223,14 +223,14 @@ export function CaseLibraryScreen() {
             className="btn-plush ghost"
             style={{ fontSize: 14, padding: '10px 18px' }}
             onClick={() => store.setScreen('gpRoom')}
-            title="Back to the GP room"
+            title="Pratisyen odasına dön"
           >
-            ← Back
+            ← Geri
           </button>
           <div>
-            <h1 style={{ fontSize: 36, marginBottom: 4 }}>Pick a patient</h1>
+            <h1 style={{ fontSize: 36, marginBottom: 4 }}>Bir hasta seç</h1>
             <div style={{ fontWeight: 600, color: 'var(--ink-2)', fontSize: 14 }}>
-              Cases are grouped by polyclinic — pick a specialty chip to focus.
+              Vakalar polikliniklere göre gruplanır — odaklanmak için branş seç.
             </div>
           </div>
         </div>
@@ -240,7 +240,7 @@ export function CaseLibraryScreen() {
           style={{ fontSize: 16, padding: '12px 22px', whiteSpace: 'nowrap' }}
           onClick={shuffle}
         >
-          🔀 Shuffle ({totalVisible})
+          🔀 Karıştır ({totalVisible})
         </button>
       </div>
 
@@ -286,7 +286,7 @@ export function CaseLibraryScreen() {
                 {CLINIC_LABELS[clinic]}
               </h2>
               <span className="chip" style={{ fontSize: 11, marginLeft: 6 }}>
-                {list.length} case{list.length === 1 ? '' : 's'}
+                {list.length} vaka
               </span>
             </div>
             <div
@@ -308,7 +308,7 @@ export function CaseLibraryScreen() {
             className="plush"
             style={{ padding: 24, textAlign: 'center', color: 'var(--ink-2)', fontWeight: 700 }}
           >
-            No cases match this filter — try another chip.
+            Bu filtreye uyan vaka yok — başka bir branş dene.
           </div>
         )}
       </div>

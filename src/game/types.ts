@@ -9,6 +9,7 @@ export type Screen =
   | 'home'
   | 'mode'
   | 'gpRoom'
+  | 'er'
   | 'library'
   | 'brief'
   | 'encounter'
@@ -188,6 +189,17 @@ export interface PolyclinicSlice {
   patient: ActivePatient | null;
 }
 
+/** ER shift board. Four beds, the rest wait in the arrival queue. A bed
+ *  holds a case id while occupied; finishing the encounter frees it and
+ *  promotes the next waiting patient. */
+export interface ErSlice {
+  bedIds: Array<string | null>;
+  queueIds: string[];
+  completedIds: string[];
+}
+
+export type EncounterMode = 'polyclinic' | 'er';
+
 // ── Combined game state ──
 export interface GameState {
   screen: Screen;
@@ -197,8 +209,13 @@ export interface GameState {
   selectedCaseId: string;
   hasOnboarded: boolean;
   /** Polyclinic 3D scene needs this slice. Shape consumed by `Polyclinic`
-   *  and `FloatingVoicePanel`. */
+   *  and `FloatingVoicePanel`. In ER mode this holds the patient currently
+   *  being examined (the 3D room is shared). */
   polyclinic: PolyclinicSlice;
+  /** Which flow the active encounter belongs to. */
+  encounterMode: EncounterMode;
+  /** ER board state (beds + waiting queue). */
+  er: ErSlice;
   /** Snapshot of the most recently completed encounter, taken at the moment
    *  the patient walks out (see `Store.finishPolyclinicCase`). DebriefScreen
    *  reads this so the grading agent still has the full action log even

@@ -1,12 +1,9 @@
-// Custom tools exposed to the `medkit-attending` Managed Agent.
+// Browser-side schemas for debrief/custom-tool payloads.
 //
-// The agent-side tool definitions live in `backend/server.py` as
-// `MEDKIT_CUSTOM_TOOLS` (JSON Schema, sent to `agents.create`). This file is
-// the browser-side twin: a Zod schema per tool, used to validate the
-// `input` of every `agent.custom_tool_use` event before we render it.
-//
-// If you change a schema here, update `MEDKIT_CUSTOM_TOOLS` in
-// `backend/server.py` too. They must match.
+// `caseEvaluationInput` is the contract between `/agent/debrief` and the
+// debrief screen: the hook validates every response before rendering.
+// The remaining schemas are kept for the renderer's tool vocabulary and
+// for historical event payloads.
 
 import { z } from 'zod';
 
@@ -27,8 +24,8 @@ export type CustomToolName = (typeof CUSTOM_TOOL_NAMES)[number];
 // on a user decision — the renderer shows an approve/decline UI and the
 // caller's click decides the result payload.
 //
-// Custom tools don't go through Anthropic's permission-policy gate (that
-// covers native + MCP tools), so this is a frontend-enforced layer.
+// There is no server-side tool gate anymore, so this stays a
+// frontend-enforced layer for renderer events.
 export const CUSTOM_TOOL_PERMISSIONS = {
   render_vitals_chart: 'auto',
   render_bed_map: 'auto',

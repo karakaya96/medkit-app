@@ -114,7 +114,7 @@ export function SplashScreen() {
             boxShadow: 'var(--plush-tiny)',
           }}
         >
-          The clinic that lets you make every mistake before they count.
+          Her hatayı gerçek hayatta sayılmadan önce yapabileceğin klinik.
         </div>
 
         <div className="popin breathe" style={{ animationDelay: '.3s', marginTop: 24 }}>
@@ -127,7 +127,7 @@ export function SplashScreen() {
               store.beginFromSplash();
             }}
           >
-            ▸ Tap to begin
+            ▸ Başlamak için dokun
           </button>
         </div>
 
@@ -151,9 +151,9 @@ export function SplashScreen() {
               boxShadow: '0 2px 0 var(--line)',
             }}
           >
-            space
+            boşluk
           </span>{' '}
-          to continue
+          ile devam et
         </div>
       </div>
 

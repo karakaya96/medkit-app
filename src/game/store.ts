@@ -14,6 +14,7 @@ import { DEFAULT_CLINIC } from './clinic';
 import type { PaletteName } from '../styles/palettes';
 import type { Case as MedKitCase } from '../data/cases';
 import { CASES, getCase, getCaseClinic, getPatientCase } from '../data/cases';
+import { PATIENT_CASES } from '../data/patients';
 import { ensureAudioContext } from '../voice/conversationStore';
 
 const ONBOARDED_KEY = 'medkit:onboarded';
@@ -22,6 +23,9 @@ const ONBOARDED_KEY = 'medkit:onboarded';
  *  the conversation cache, and the 3D scene. `voice/conversationStore.ts`
  *  keys on this. */
 export const POLYCLINIC_BED_INDEX = -10;
+
+/** Number of resuscitation beds shown on the ER board. */
+export const ER_BED_COUNT = 4;
 
 function readOnboarded(): boolean {
   try {
@@ -54,7 +58,7 @@ const DEFAULT_TWEAKS: Tweaks = {
 function toPatientCase(c: MedKitCase): PatientCase {
   const real = getPatientCase(c.id);
   if (real) return real;
-  const isRedFlag = c.tags.some((t) => t.toLowerCase().includes('red flag'));
+  const isRedFlag = c.tags.some((t) => /red flag|kırmızı bayrak/.test(t.toLowerCase()));
   return {
     id: c.id,
     name: c.name,
@@ -87,11 +91,11 @@ function hasEncounterActivity(p: ActivePatient): boolean {
   );
 }
 
-function toActivePatient(c: MedKitCase): ActivePatient {
+function makeActivePatient(caseData: PatientCase, bedIndex: number): ActivePatient {
   const now = Date.now();
   return {
-    case: toPatientCase(c),
-    bedIndex: POLYCLINIC_BED_INDEX,
+    case: caseData,
+    bedIndex,
     status: 'in-bed',
     askedQuestionIds: [],
     orderedTestIds: [],
@@ -104,6 +108,10 @@ function toActivePatient(c: MedKitCase): ActivePatient {
   };
 }
 
+function toActivePatient(c: MedKitCase): ActivePatient {
+  return makeActivePatient(toPatientCase(c), POLYCLINIC_BED_INDEX);
+}
+
 class Store {
   private state: GameState = {
     screen: 'splash',
@@ -113,6 +121,12 @@ class Store {
     selectedCaseId: 'im-001',
     hasOnboarded: readOnboarded(),
     polyclinic: { clinic: DEFAULT_CLINIC, patient: null },
+    encounterMode: 'polyclinic',
+    er: {
+      bedIds: PATIENT_CASES.slice(0, ER_BED_COUNT).map((c) => c.id),
+      queueIds: PATIENT_CASES.slice(ER_BED_COUNT).map((c) => c.id),
+      completedIds: [],
+    },
     lastEncounter: null,
     viewedEvalHistoryId: null,
   };
@@ -202,9 +216,59 @@ class Store {
     const c = getCase(id);
     this.set({
       selectedCaseId: id,
+      encounterMode: 'polyclinic',
       polyclinic: { ...this.state.polyclinic, patient: toActivePatient(c) },
     });
   };
+
+  // ── ER ─────────────────────────────────────────
+  /** Load an ER case into a bed and route through the brief. The 3D
+   *  consultation room is reused as the examination room. */
+  /** Load an ER case into its bed without navigating (used by the
+   *  encounter screen's "came here directly" fallback). */
+  loadErPatient = (id: string) => {
+    const real = PATIENT_CASES.find((c) => c.id === id);
+    const bedIndex = this.state.er.bedIds.indexOf(id);
+    if (!real || bedIndex < 0) return;
+    this.set({
+      selectedCaseId: id,
+      encounterMode: 'er',
+      polyclinic: {
+        ...this.state.polyclinic,
+        patient: makeActivePatient(real, bedIndex),
+      },
+    });
+  };
+
+  startErCase = (id: string) => {
+    try {
+      ensureAudioContext();
+    } catch {
+      /* no Web Audio — the voice panel surfaces the error */
+    }
+    this.loadErPatient(id);
+    if (this.state.encounterMode === 'er') this.set({ screen: 'brief' });
+  };
+
+  /** Free the bed after an ER encounter and promote the next waiting case. */
+  private finishErBed(bedIndex: number) {
+    if (bedIndex < 0 || bedIndex >= ER_BED_COUNT) return;
+    const er = this.state.er;
+    const finishedId = er.bedIds[bedIndex];
+    const queue = [...er.queueIds];
+    const nextId = queue.shift() ?? null;
+    const bedIds = [...er.bedIds];
+    bedIds[bedIndex] = nextId;
+    this.set({
+      er: {
+        bedIds,
+        queueIds: queue,
+        completedIds: finishedId
+          ? [...er.completedIds, finishedId]
+          : er.completedIds,
+      },
+    });
+  }
 
   /** Clear the patient — triggers the walk-out animation in the 3D scene.
    *  Snapshots the encounter into `lastEncounter` so DebriefScreen can grade
@@ -219,6 +283,9 @@ class Store {
   finishPolyclinicCase = () => {
     const snapshot = this.state.polyclinic.patient;
     const keepSnapshot = snapshot && hasEncounterActivity(snapshot);
+    if (snapshot && this.state.encounterMode === 'er') {
+      this.finishErBed(snapshot.bedIndex);
+    }
     this.set({
       polyclinic: { ...this.state.polyclinic, patient: null },
       lastEncounter: keepSnapshot ? snapshot : this.state.lastEncounter,
@@ -237,6 +304,7 @@ class Store {
     const clinic = getCaseClinic(id);
     this.set({
       selectedCaseId: id,
+      encounterMode: 'polyclinic',
       screen: 'brief',
       polyclinic: clinic
         ? { ...this.state.polyclinic, clinic }
@@ -268,6 +336,7 @@ class Store {
     this.markAttempted(targetId);
     this.set({
       selectedCaseId: targetId,
+      encounterMode: 'polyclinic',
       polyclinic: {
         ...this.state.polyclinic,
         clinic: clinic ?? this.state.polyclinic.clinic,

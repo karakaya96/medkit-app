@@ -13,27 +13,27 @@ interface Card {
 const CARDS: Card[] = [
   {
     bg: 'var(--peach)',
-    title: 'What this is.',
+    title: 'Bu nedir?',
     body:
-      "A clinic full of simulated patients with histories, symptoms, and stories. You'll talk to them out loud, decide what to do, and get a structured debrief — every claim cited to a real published guideline.",
+      'Öyküsü, semptomu ve hikâyesi olan simüle hastalarla dolu bir klinik. Onlarla sesli konuşur, ne yapacağına karar verir ve yapılandırılmış bir değerlendirme alırsın — her iddia gerçek bir yayınlanmış kılavuza dayandırılır.',
     icon: <Doodle kind="stetho" size={140} color="var(--mint)" />,
-    tag: '01 · meet medkit',
+    tag: '01 · medkit ile tanış',
   },
   {
     bg: 'var(--mint)',
-    title: 'How it works.',
+    title: 'Nasıl çalışır?',
     body:
-      'Pick a clinic. The next patient is called in. You speak; they answer in conversation. You order labs, prescribe, counsel, refer. At the end, a senior clinician walks you through what you did well and what to work on. Five to eight minutes per case. Patient conversations powered by Claude Opus 4.7.',
+      'Bir klinik seç. Sıradaki hasta içeri alınır. Sen konuşursun, o sohbet içinde yanıtlar. Tetkik ister, reçete yazar, danışmanlık verir, sevk edersin. Sonunda kıdemli bir klinisyen neleri iyi yaptığını ve neleri geliştirmen gerektiğini anlatır. Vaka başına beş ila sekiz dakika. Hasta sohbetleri ücretsiz yapay zekâ modelleriyle desteklenir.',
     icon: <Doodle kind="cross" size={140} color="#F47A92" />,
-    tag: '02 · the loop',
+    tag: '02 · döngü',
   },
   {
     bg: 'var(--sky)',
-    title: "Who it's for.",
+    title: 'Kimler için?',
     body:
-      'For medical students, residents, and doctors preparing for OSCE-style exams. This is a training simulator, not a clinical tool. Never used to give real medical advice.',
+      'Tıp öğrencileri, asistanlar ve OSCE tarzı sınavlara hazırlanan doktorlar için. Bu bir eğitim simülatörüdür, klinik araç değildir. Gerçek tıbbi tavsiye vermek için asla kullanılmaz.',
     icon: <Doodle kind="heart" size={140} color="#F47A92" />,
-    tag: '03 · safety line',
+    tag: '03 · güvenlik çizgisi',
   },
 ];
 
@@ -139,11 +139,11 @@ export function OnboardingScreen() {
           style={{ visibility: step === 0 ? 'hidden' : 'visible' }}
           onClick={() => store.setOnboardingStep(step - 1)}
         >
-          ← Back
+          ← Geri
         </button>
         {step < CARDS.length - 1 ? (
           <button type="button" className="btn-plush primary" onClick={() => store.setOnboardingStep(step + 1)}>
-            Next →
+            İleri →
           </button>
         ) : (
           <button
@@ -152,7 +152,7 @@ export function OnboardingScreen() {
             style={{ fontSize: 20 }}
             onClick={() => store.finishOnboarding()}
           >
-            Take me in →
+            Beni içeri al →
           </button>
         )}
       </div>

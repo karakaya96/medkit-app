@@ -199,29 +199,30 @@ export function ModeSelectScreen() {
           }}
         >
           <Door
-            label="Polyclinics"
-            sub="Outpatient — choose a specialty"
+            label="Poliklinikler"
+            sub="Ayaktan — branş seç"
             color="var(--mint)"
             doorColor="#5FCFA0"
             available
-            tags={['Open now', '24 specialties']}
+            tags={['Açık', '24 branş']}
             onOpen={() => store.setScreen('gpRoom')}
           />
           <Door
-            label="Services"
-            sub="Imaging, lab, pharmacy"
+            label="Hizmetler"
+            sub="Görüntüleme, laboratuvar, eczane"
             color="var(--sky)"
             doorColor="#5AB7F2"
             locked
-            tags={['Coming soon']}
+            tags={['Yakında']}
           />
           <Door
-            label="Emergency"
-            sub="ED triage & resus"
+            label="Acil Servis"
+            sub="Triyaj ve resüsitasyon"
             color="var(--rose)"
             doorColor="#F47A92"
-            locked
-            tags={['Coming soon']}
+            available
+            tags={['Açık', '4 yatak']}
+            onOpen={() => store.setScreen('er')}
           />
         </div>
 

@@ -6,6 +6,7 @@ import { OnboardingScreen } from './components/OnboardingScreen';
 import { HomeScreen } from './components/HomeScreen';
 import { ModeSelectScreen } from './components/ModeSelectScreen';
 import { GPRoomScreen } from './components/GPRoomScreen';
+import { ERScreen } from './components/ERScreen';
 import { CaseLibraryScreen } from './components/CaseLibraryScreen';
 import { BriefScreen } from './components/BriefScreen';
 import { EncounterScreen } from './components/EncounterScreen';
@@ -47,6 +48,7 @@ export default function App() {
       {screen === 'home' && <HomeScreen />}
       {screen === 'mode' && <ModeSelectScreen />}
       {screen === 'gpRoom' && <GPRoomScreen />}
+      {screen === 'er' && <ERScreen />}
       {screen === 'library' && <CaseLibraryScreen />}
       {screen === 'brief' && <BriefScreen />}
       {screen === 'encounter' && <EncounterScreen />}

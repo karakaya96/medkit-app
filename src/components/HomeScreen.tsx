@@ -16,22 +16,22 @@ const VERDICT_COLOR: Record<EvalHistoryEntry['verdict'], string> = {
 };
 
 const VERDICT_LABEL: Record<EvalHistoryEntry['verdict'], string> = {
-  excellent: 'Excellent',
-  good: 'Good',
-  satisfactory: 'Satisfactory',
-  borderline: 'Borderline',
-  'clear-fail': 'Clear fail',
+  excellent: 'Mükemmel',
+  good: 'İyi',
+  satisfactory: 'Yeterli',
+  borderline: 'Sınırda',
+  'clear-fail': 'Başarısız',
 };
 
 function relativeDate(ms: number): string {
   const diffMs = Date.now() - ms;
   const minutes = Math.round(diffMs / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return 'az önce';
+  if (minutes < 60) return `${minutes} dk önce`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours} sa önce`;
   const days = Math.round(hours / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) return `${days} gün önce`;
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
@@ -81,9 +81,9 @@ const VERDICT_SCORE: Record<EvalHistoryEntry['verdict'], number> = {
 };
 
 const DOMAIN_META = [
-  { key: 'data_gathering' as const, label: 'Data Gathering', color: 'var(--peach)', deep: 'var(--peach-deep)' },
-  { key: 'clinical_management' as const, label: 'Clinical Management', color: 'var(--mint)', deep: 'var(--mint-deep)' },
-  { key: 'interpersonal' as const, label: 'Interpersonal', color: 'var(--sky)', deep: 'var(--sky-deep)' },
+  { key: 'data_gathering' as const, label: 'Veri Toplama', color: 'var(--peach)', deep: 'var(--peach-deep)' },
+  { key: 'clinical_management' as const, label: 'Klinik Yönetim', color: 'var(--mint)', deep: 'var(--mint-deep)' },
+  { key: 'interpersonal' as const, label: 'Kişilerarası', color: 'var(--sky)', deep: 'var(--sky-deep)' },
 ];
 
 interface TrainingStats {
@@ -164,7 +164,7 @@ export function HomeScreen() {
 
   return (
     <div className="screen" style={{ background: 'var(--cream)' }}>
-      <TopBar here={0} steps={['Profile']} />
+      <TopBar here={0} steps={['Profil']} />
 
       <div
         style={{
@@ -179,15 +179,15 @@ export function HomeScreen() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink-2)' }}>
-              {stats.count === 0 ? 'Day one' : 'Welcome back'}
+              {stats.count === 0 ? 'Birinci gün' : 'Tekrar hoş geldin'}
             </div>
             <h1 style={{ fontSize: 44, lineHeight: 1.05, marginTop: 4 }}>
-              {stats.count === 0 ? 'Ready when you are.' : 'Welcome back, doctor.'}
+              {stats.count === 0 ? 'Hazır olduğunda başla.' : 'Tekrar hoş geldin, doktor.'}
             </h1>
             <div style={{ fontSize: 16, color: 'var(--ink-2)', fontWeight: 600, marginTop: 6 }}>
               {stats.count === 0
-                ? 'Pick a polyclinic and your first case walks in. Your training log starts filling in after that.'
-                : 'Your training log is updating with every case you finish.'}
+                ? 'Bir poliklinik seç, ilk hastan içeri girsin. Eğitim kaydın ardından dolmaya başlayacak.'
+                : 'Bitirdiğin her vakayla eğitim kaydın güncelleniyor.'}
             </div>
           </div>
 
@@ -219,9 +219,9 @@ export function HomeScreen() {
                   <PatientFace style={tweaks.avatarStyle} skin="#E8B68F" hair="#3B2A1F" size={120} mood="neutral" />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 900, fontSize: 22 }}>No case picked yet</div>
+                  <div style={{ fontWeight: 900, fontSize: 22 }}>Henüz vaka seçilmedi</div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-2)', marginTop: 2 }}>
-                    Choose a polyclinic — the next patient on the bench will walk straight in.
+                    Bir poliklinik seç — sıradaki hasta doğrudan içeri girecek.
                   </div>
                 </div>
                 <button
@@ -230,7 +230,7 @@ export function HomeScreen() {
                   style={{ fontSize: 15, padding: '14px 18px' }}
                   onClick={() => store.setScreen('mode')}
                 >
-                  Start →
+                  Başla →
                 </button>
               </div>
             </div>
@@ -270,9 +270,9 @@ export function HomeScreen() {
                     <span className="chip" style={{ background: VERDICT_COLOR[history[0].verdict] }}>
                       {VERDICT_LABEL[history[0].verdict]}
                     </span>
-                    <span className="chip">last review · {relativeDate(history[0].savedAt)}</span>
+                    <span className="chip">son değerlendirme · {relativeDate(history[0].savedAt)}</span>
                     {stats.weakest && (
-                      <span className="chip butter">focus · {stats.weakest.label.toLowerCase()}</span>
+                      <span className="chip butter">odak · {stats.weakest.label.toLowerCase()}</span>
                     )}
                   </div>
                 </div>
@@ -282,7 +282,7 @@ export function HomeScreen() {
                   style={{ fontSize: 15, padding: '14px 18px' }}
                   onClick={() => store.viewEvalHistory(history[0].id)}
                 >
-                  Review →
+                  İncele →
                 </button>
               </div>
             </div>
@@ -294,7 +294,7 @@ export function HomeScreen() {
             style={{ fontSize: 22, padding: '18px 0', alignSelf: 'stretch' }}
             onClick={() => store.setScreen('mode')}
           >
-            ▶ Start a session
+            ▶ Oturuma başla
           </button>
 
           <button
@@ -315,12 +315,12 @@ export function HomeScreen() {
               }
               store.setScreen('agenticRounds');
             }}
-            title="See how the simulator grades you — agents, citations, hard rules"
+            title="Simülatörün seni nasıl değerlendirdiğini gör — ajanlar, kaynaklar, katı kurallar"
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span className="chip butter" style={{ fontSize: 10 }}>NEW</span>
-              <span style={{ fontWeight: 800 }}>Agentic rounds</span>
-              <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>· how the simulator grades you</span>
+              <span style={{ fontWeight: 800 }}>Ajan turları</span>
+              <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>· simülatör seni nasıl değerlendirir</span>
             </span>
             <span style={{ fontWeight: 800, color: 'var(--ink-2)' }}>→</span>
           </button>
@@ -343,12 +343,12 @@ export function HomeScreen() {
               }
               store.setScreen('agentTopology');
             }}
-            title="Live map of Opus 4.7 and the sub-rules + sessions it controls"
+            title="Değerlendirme ajanının canlı haritası — alt kurallar ve oturumlar"
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span className="chip peach" style={{ fontSize: 10 }}>LIVE</span>
-              <span style={{ fontWeight: 800 }}>Agent topology</span>
-              <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>· Opus 4.7 → sub-rules &amp; sessions</span>
+              <span style={{ fontWeight: 800 }}>Ajan topolojisi</span>
+              <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>· değerlendirme ajanı → alt kurallar ve oturumlar</span>
             </span>
             <span style={{ fontWeight: 800, color: 'var(--ink-2)' }}>→</span>
           </button>
@@ -371,13 +371,13 @@ export function HomeScreen() {
                   textTransform: 'uppercase',
                 }}
               >
-                RECENT CASES
+                SON VAKALAR
               </div>
               <span
                 style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', cursor: 'pointer' }}
                 onClick={() => store.setScreen('history')}
               >
-                see all →
+                tümünü gör →
               </span>
             </div>
             {history.length === 0 ? (
@@ -393,7 +393,7 @@ export function HomeScreen() {
                   textAlign: 'center',
                 }}
               >
-                No reviews yet — finish an encounter to see your AI feedback here.
+                Henüz değerlendirme yok — yapay zekâ geri bildirimini görmek için bir görüşmeyi bitir.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -449,9 +449,9 @@ export function HomeScreen() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (window.confirm(`Delete review for ${r.caseName}?`)) onDelete(r.id);
+                          if (window.confirm(`${r.caseName} değerlendirmesi silinsin mi?`)) onDelete(r.id);
                         }}
-                        title="Delete this review"
+                        title="Bu değerlendirmeyi sil"
                         style={{
                           background: 'transparent',
                           border: 'none',
@@ -486,13 +486,13 @@ export function HomeScreen() {
                 marginBottom: 10,
               }}
             >
-              YOUR TRAINING
+              EĞİTİMİN
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <Stat big={stats.count > 0 ? String(stats.count) : '—'} sub="cases done" />
+              <Stat big={stats.count > 0 ? String(stats.count) : '—'} sub="tamamlanan vaka" />
               <Stat
                 big={stats.count > 0 ? stats.avgRating.toFixed(1) : '—'}
-                sub="avg rating"
+                sub="ortalama puan"
                 out={stats.count > 0 ? ' / 5' : ''}
               />
             </div>
@@ -515,7 +515,7 @@ export function HomeScreen() {
                   letterSpacing: '.06em',
                 }}
               >
-                WEAKEST DOMAIN
+                EN ZAYIF ALAN
               </div>
               <div style={{ fontSize: 18, fontWeight: 900, marginTop: 2 }}>
                 {stats.weakest ? stats.weakest.label : '—'}
@@ -551,9 +551,9 @@ export function HomeScreen() {
                 }}
               >
                 <span>
-                  {stats.weakest ? `${stats.weakest.label} · ${stats.weakest.pct}%` : 'No reviews yet'}
+                  {stats.weakest ? `${stats.weakest.label} · ${stats.weakest.pct}%` : 'Henüz değerlendirme yok'}
                 </span>
-                <span>focus area</span>
+                <span>odak alanı</span>
               </div>
             </div>
           </div>
@@ -569,11 +569,11 @@ export function HomeScreen() {
                 marginBottom: 10,
               }}
             >
-              DOMAIN PROGRESS
+              ALAN GELİŞİMİ
             </div>
             {stats.count === 0 ? (
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>
-                Domain breakdown unlocks after your first AI review.
+                Alan dağılımı ilk yapay zekâ değerlendirmenden sonra açılır.
               </div>
             ) : (
               stats.domains.map((d) => (
@@ -625,13 +625,13 @@ export function HomeScreen() {
             <div>
               <div style={{ fontWeight: 900, fontSize: 14 }}>
                 {stats.streakDays === 0
-                  ? 'Streak: —'
-                  : `Streak: ${stats.streakDays} ${stats.streakDays === 1 ? 'day' : 'days'}`}
+                  ? 'Seri: —'
+                  : `Seri: ${stats.streakDays} gün`}
               </div>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>
                 {stats.streakDays === 0
-                  ? 'Finish your first case to start a streak.'
-                  : 'One more case today keeps it alive.'}
+                  ? 'Seriyi başlatmak için ilk vakanı bitir.'
+                  : 'Bugün bir vaka daha seriyi sürdürür.'}
               </div>
             </div>
           </div>

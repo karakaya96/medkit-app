@@ -6,6 +6,33 @@ Each entry: date, what changed, why, what it replaces.
 
 ---
 
+## 2026-10-22 — Attending grader moved to the free tier
+
+**What changed.** Replaced the Anthropic Managed Agent grading path with a
+single structured call to an OpenRouter `:free` model (`POST /agent/debrief`).
+The browser now posts the rubric, guideline slice and encounter log; the model
+returns per-criterion verdicts and a narrative, and the backend recomputes all
+domain scores and the global rating from rubric weights. Removed the
+`/agent/bootstrap`, `/agent/refresh` and `/agent/sessions*` proxy, the
+`anthropic` dependency, and the browser Managed Agent client.
+
+**Why.** The app is meant to run at zero cost for trainees. Anthropic has no
+free tier, so a fresh clone could not produce a debrief without a paid key. The
+interactive custom-tool theatre (vitals chart, bed map) was never rendered in
+the debrief UI; the only tool the screen consumed was the final evaluation.
+
+**What it replaces.** The `medkit-attending` Managed Agent and its session
+stream. Grading quality now depends on the selected free model, so scores are
+server-computed and the guideline allowlist is enforced in code rather than
+trusted to the model.
+
+**Trade-off.** No mid-debrief tool calls and no streamed narration. The UI
+already had a ticker for the waiting state, so the learner-facing flow is
+unchanged. Free models are rate-limited; `openrouter/free` routes to whichever
+free model is healthy, and `GRADER_MODEL` can pin a specific one.
+
+---
+
 ## 2026-04-24 — Kickoff, shift from game to training tool
 
 **What changed.** The project started as a browser-based ER game (score, lives, dispatch). Today I realized the real value is clinical training: a doctor-in-training can run through a dozen cases in an hour and get grading feedback.

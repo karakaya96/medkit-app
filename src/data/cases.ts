@@ -3,6 +3,7 @@ import type { PatientCase } from '../game/types';
 import type { ClinicId } from '../game/clinic';
 import { CLINIC_LABELS } from '../game/clinic';
 import { POLYCLINIC_CASES, POLYCLINIC_DIAGNOSIS_LABELS } from './polyclinicPatients';
+import { PATIENT_CASES } from './patients';
 
 /** Cute-cartoon face descriptor for the case library. Derived deterministically
  *  from the underlying `PatientCase` so the same patient always renders the
@@ -75,8 +76,8 @@ function pickMood(p: PatientCase): FaceMood {
   if (p.severity === 'urgent') return 'sick';
   // Mild anxiety hint based on chief complaint keywords.
   const cc = p.chiefComplaint.toLowerCase();
-  if (/(pain|chest|headache|bleed)/.test(cc)) return 'worried';
-  if (/(fever|cough|nausea|vomit|sore)/.test(cc)) return 'sick';
+  if (/(ağrı|göğüs|baş ağrısı|kanama)/i.test(cc)) return 'worried';
+  if (/(ateş|öksürük|bulantı|kusma|boğaz)/i.test(cc)) return 'sick';
   return 'neutral';
 }
 
@@ -86,8 +87,8 @@ function diagLabel(id: string): string {
 
 function tagsFor(p: PatientCase, clinic: ClinicId): string[] {
   const out: string[] = [];
-  if (p.severity === 'critical') out.push('red flag');
-  else if (p.severity === 'urgent') out.push('urgent');
+  if (p.severity === 'critical') out.push('kırmızı bayrak');
+  else if (p.severity === 'urgent') out.push('öncelikli');
   out.push(CLINIC_LABELS[clinic].toLowerCase());
   return out;
 }
@@ -100,7 +101,7 @@ function toCase(p: PatientCase, clinic: ClinicId): Case {
     sex: p.gender,
     complaint: p.chiefComplaint,
     tags: tagsFor(p, clinic),
-    guideline: 'Polyclinic',
+    guideline: 'Poliklinik',
     skin: pickSkin(p),
     hair: pickHair(p),
     mood: pickMood(p),
@@ -144,6 +145,10 @@ export const CONDITION_COLORS: Record<string, string> = Object.fromEntries(
 export function getCase(id: string): Case {
   const found = CASES.find((c) => c.id === id);
   if (found) return found;
+  // ER cases live in a separate catalogue; still render them with the same
+  // cartoon face card when the brief/end/debrief screens ask for a Case.
+  const er = PATIENT_CASES.find((c) => c.id === id);
+  if (er) return toCase(er, 'all-specialties');
   return CASES[0];
 }
 
@@ -151,7 +156,7 @@ export function getCase(id: string): Case {
  *  diagnosis options, test results, etc.) — used by the encounter /
  *  brief / debrief screens that need more than the cartoon face. */
 export function getPatientCase(id: string): PatientCase | undefined {
-  return BY_ID.get(id)?.p;
+  return BY_ID.get(id)?.p ?? PATIENT_CASES.find((c) => c.id === id);
 }
 
 /** Which clinic does this case belong to? */

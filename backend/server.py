@@ -1,23 +1,31 @@
 """
 FastAPI backend for the medkit simulator.
 
-Hosts the Claude Managed Agents proxy (medkit-attending grading) and the
-real-time voice token mint endpoint (`/voice/token`). Real-time voice
-itself runs in `voice_agent.py` as a separate LiveKit Agents worker —
-this server only issues access tokens and pre-creates rooms with
-patient persona metadata.
+Hosts the free-tier LLM proxy (debrief grading, patient text chat, ESI
+triage) and the real-time voice token mint endpoint (`/voice/token`).
+Real-time voice itself runs in `voice_agent.py` as a separate LiveKit
+Agents worker — this server only issues access tokens and pre-creates
+rooms with patient persona metadata.
 
-GET  /health         → backend + agent status report
-POST /agent/...      → Managed Agents proxy (medkit-attending)
+All model calls use OpenRouter's OpenAI-compatible API with `:free`
+models, so the simulator needs no paid subscription. The only external
+service is LiveKit Cloud's free tier for WebRTC transport.
+
+GET  /health         → backend + model/voice config report
+POST /agent/debrief  → end-of-encounter OSCE grading (free model)
+POST /agent/patient/stream → typed patient chat (free model)
+POST /agent/triage/classify → ESI classification (free model)
 POST /voice/token    → mint LiveKit JWT for a patient room
 """
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import ipaddress
+import json
+import logging
 import os
-import threading
 from pathlib import Path
 from typing import Optional
 
@@ -49,7 +57,7 @@ _load_env_local()
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -57,12 +65,11 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 # Shared secret protects /agent/* and /voice/* against direct curl abuse.
-# Vercel Edge Middleware injects this header for browser traffic; a
-# missing/wrong value returns 401 before we burn any Anthropic / LiveKit
-# credits. Localhost origins bypass for `npm run dev`.
+# The browser sends this header; a missing/wrong value returns 401 before
+# we burn LLM credits. Localhost origins bypass for
+# `npm run dev`. The app has no hosted deployment — only local use.
 SHARED_SECRET = os.environ.get("BACKEND_SHARED_SECRET", "")
 ALLOWED_ORIGINS = [
-    "https://medkit.vercel.app",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5174",
@@ -128,18 +135,13 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    """Frontend polls this before showing the attending dock so a missing
-    API key or unbootstrapped agent surfaces a clearer error than a blank
-    SSE failure."""
-    has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
-    agent_id = os.environ.get("MEDKIT_AGENT_ID") or None
-    env_id = os.environ.get("MEDKIT_ENV_ID") or None
-    bootstrapped = bool(agent_id and env_id)
+    """Configuration report used by the UI and the voice doctor script."""
     livekit_ok = bool(
         os.environ.get("LIVEKIT_URL")
         and os.environ.get("LIVEKIT_API_KEY")
         and os.environ.get("LIVEKIT_API_SECRET")
     )
+    llm_ok = bool(os.environ.get("OPENROUTER_API_KEY"))
     return {
         "ok": True,
         "voice": {
@@ -148,84 +150,17 @@ def health():
             "stt": "faster-whisper",
             "tts": "edge-tts",
             "llm_provider": os.environ.get("LLM_PROVIDER", "openrouter"),
-            "llm_configured": bool(
-                os.environ.get("OPENROUTER_API_KEY")
-                or os.environ.get("NVIDIA_API_KEY")
-            ),
+            "llm_configured": llm_ok,
             "whisper_model": os.environ.get("WHISPER_MODEL", "base"),
         },
-        "agent": {
-            "anthropic_sdk_installed": _HAS_ANTHROPIC,
-            "api_key_configured": has_key,
-            "bootstrapped": bootstrapped,
-            "model": AGENT_MODEL if _HAS_ANTHROPIC else None,
+        "grading": {
+            "provider": "openrouter",
+            "api_key_configured": llm_ok,
+            "provider_fallback_configured": bool(os.environ.get("NVIDIA_API_KEY")),
+            "model": GRADER_MODEL,
         },
     }
 
-
-# ───────────────────────────────────────────────────────────────────────────
-# Claude Managed Agents proxy
-# ───────────────────────────────────────────────────────────────────────────
-#
-# The browser talks to this server instead of the Anthropic API directly so
-# that (a) the Managed Agents API key stays server-side and (b) the
-# one-time bootstrap (agents.create + environments.create) is done here
-# once and the resulting IDs are reused across sessions.
-#
-# Per-env vars:
-#   ANTHROPIC_API_KEY  — required. Server-side only; never exposed to the
-#                        browser. Used only by the Managed Agent; patient
-#                        persona + triage use OPENROUTER_API_KEY.
-#   MEDKIT_AGENT_ID    — persisted agent ID (bootstrap returns it the
-#                        first time; set it here afterwards to skip
-#                        re-creating).
-#   MEDKIT_ENV_ID      — persisted environment ID (same pattern).
-#
-# Endpoints:
-#   POST /agent/bootstrap                      — idempotent; creates
-#                                                env+agent if the env vars
-#                                                are unset, else returns
-#                                                the cached IDs.
-#   POST /agent/sessions                       — create a new session for
-#                                                the current bootstrapped
-#                                                agent.
-#   GET  /agent/sessions/{sid}/stream          — SSE proxy of the live
-#                                                event stream. Used by
-#                                                eventStreamRenderer.tsx.
-#   GET  /agent/sessions/{sid}/events          — paginated history (for
-#                                                the reconnect+dedupe
-#                                                pattern).
-#   POST /agent/sessions/{sid}/events          — forward user events
-#                                                (user.message,
-#                                                user.custom_tool_result,
-#                                                user.interrupt, etc.).
-#   POST /agent/vault/ehr/lookup               — credential-vault demo:
-#                                                attaches EHR_API_TOKEN
-#                                                server-side and returns
-#                                                a fake record. The token
-#                                                never leaves the process.
-#   POST /agent/triage/classify                — one-shot ESI
-#                                                classifier for ER
-#                                                arrivals. Stateless;
-#                                                separate from the
-#                                                Managed Agent session.
-#
-# TODO: verify wire names against
-# https://platform.claude.com/docs/en/managed-agents/ before submission —
-# the SDK is beta and field names can drift.
-
-import asyncio
-import json
-import logging
-
-from fastapi import Request
-from fastapi.responses import StreamingResponse
-
-try:
-    from anthropic import Anthropic as _Anthropic, AsyncAnthropic as _AsyncAnthropic  # type: ignore
-    _HAS_ANTHROPIC = True
-except ImportError:  # pragma: no cover
-    _HAS_ANTHROPIC = False
 
 try:
     from openai import OpenAI, AsyncOpenAI  # type: ignore
@@ -233,8 +168,8 @@ try:
 except ImportError:  # pragma: no cover
     _HAS_OPENAI = False
 
-# Structured logger for the Managed Agents proxy. Uvicorn captures stdlib
-# logging so these land in the same stream as its own access log.
+# Structured logger for LLM calls. Uvicorn captures stdlib logging so
+# these land in the same stream as its own access log.
 _agent_log = logging.getLogger("medkit.agent")
 _agent_log.setLevel(logging.INFO)
 if not _agent_log.handlers:
@@ -242,462 +177,74 @@ if not _agent_log.handlers:
     _h.setFormatter(logging.Formatter("[medkit.agent] %(levelname)s %(message)s"))
     _agent_log.addHandler(_h)
 
-# Guards against two concurrent /agent/bootstrap calls creating two
-# agents + two environments. Threading.Lock because bootstrap runs in
-# FastAPI's threadpool (sync endpoint).
-_bootstrap_lock = threading.Lock()
-
-# SSE keepalive. EventSource will silently time out if the connection is
-# idle past the browser's threshold (~30s for Chrome, longer elsewhere).
-# We emit an SSE comment line every N seconds so the socket stays warm
-# and the browser's `onerror` reconnect logic doesn't fire.
-SSE_KEEPALIVE_SEC = 15.0
-
-
-AGENT_MODEL = "claude-opus-4-7"
-AGENT_NAME = "medkit-attending"
-ENV_NAME = "medkit-attending-env"
-
-# Direct-inference model for the dedicated triage-reasoning endpoint.
-# Defaults to Nemotron via OpenRouter for zero-cost operation; override
-# with TRIAGE_MODEL. This is a separate code path from the Managed Agent
-# (AGENT_MODEL): the agent observes the whole encounter, triage classifies
-# one arrival.
-TRIAGE_MODEL = os.environ.get("TRIAGE_MODEL", "nvidia/nemotron-3-ultra:free")
+# All grading/triage/patient calls go through OpenRouter's free tier.
+# `openrouter/free` is a router that picks whichever free model is
+# currently healthy — more reliable than pinning a model that may be
+# rotated out. Override per task if you prefer a specific model.
+FREE_MODEL = os.environ.get("FREE_MODEL", "openrouter/free")
+GRADER_MODEL = os.environ.get("GRADER_MODEL", FREE_MODEL)
+TRIAGE_MODEL = os.environ.get("TRIAGE_MODEL", FREE_MODEL)
 TRIAGE_MAX_TOKENS = 512
 
-MEDKIT_ATTENDING_SYSTEM_PROMPT = (
-    "You are the attending physician supervising a trainee in a clinical "
-    "training simulator. Your role is to OBSERVE their decisions and "
-    "GRADE the encounter. You are NOT an assistant, a guide, or a "
-    "coach. Silence is acceptable and often correct.\n\n"
+DEBRIEF_SYSTEM_PROMPT = (
+    "You are a senior clinician grading a trainee in a synthetic OSCE "
+    "simulator. You are not a coach and you do not address a real patient. "
+    "Return STRICT JSON ONLY — no prose before or after, no markdown fences.\n\n"
 
-    "The simulator runs in one of two modes at a time; the event stream "
-    "makes it explicit:\n"
-    "  • EMERGENCY ROOM (ER) — triaged by severity, 4 beds in "
-    "red/yellow/green zones. Events: [ER arrival], [test ordered], "
-    "[treatment given], [diagnosis submitted], [disposition].\n"
-    "  • POLYCLINIC (outpatient) — no triage zones, no beds, one "
-    "patient at a time, tests resolve instantly. Events: "
-    "[polyclinic arrival], [poly test], [poly diagnosis], [poly rx], "
-    "[disposition].\n\n"
+    "LANGUAGE: write every human-readable value (evidence, safety_breach.what, "
+    "highlights, improvements, narrative) in Turkish (tr-TR). Keep JSON keys, "
+    "enum values and guideline recIds exactly as specified.\n\n"
 
-    "Custom-tool usage by mode:\n"
-    "  • ER mode only: render_triage_badge (red/yellow/green + one-line "
-    "rationale), render_bed_map.\n"
-    "  • Both modes: render_vitals_chart, render_patient_timeline, "
-    "render_case_evaluation, flag_critical_finding, lookup_ehr_history.\n"
-    "  • DO NOT emit render_triage_badge or render_bed_map during "
-    "polyclinic events — triage zones and beds are ER concepts and "
-    "emitting them confuses the UI.\n\n"
-
-    "Permission policy — custom tools:\n"
-    "  • All render_* tools are auto-allowed; the trainee's UI renders "
-    "them immediately and acks back to you. Use them freely.\n"
-    "  • flag_critical_finding is a confirm-gated write. The trainee "
-    "sees an approve/decline dialog before the banner fires; the "
-    "tool_result is delayed until they choose. Reserve it for peri-"
-    "arrest vitals, closing stroke window, airway compromise, or "
-    "anaphylaxis. Never flag stable patients, and emit at most one "
-    "flag per encounter.\n"
-    "  • lookup_ehr_history is auto-allowed; it routes through the "
-    "credential vault so the EHR auth token never enters your context. "
-    "Call it once per patient when prior history or medication list "
-    "would change your assessment (e.g., unclear cardiac history, "
-    "possible drug interaction). Do not call it for every arrival.\n\n"
-
-    "What you DO:\n"
-    "  • On [ER arrival]: optionally emit one render_triage_badge with a "
-    "rationale citing specific vitals or chief-complaint evidence. If "
-    "the vitals are unremarkable and the presentation doesn't warrant "
-    "a zone call, stay silent.\n"
-    "  • On [polyclinic arrival]: stay silent. Do not greet the patient "
-    "or ask the trainee what they want to do.\n"
-    "  • At debrief time (see DEBRIEF MODE below): emit exactly one "
-    "render_case_evaluation. Never emit it before the trainee has "
-    "submitted a diagnosis.\n"
-    "  • Any text you do emit: at most one sentence, observational tone, "
-    "no questions.\n\n"
-
-    "What you DO NOT do:\n"
-    "  • Do not ask the trainee questions ('what would you like to do "
-    "first?'). Never.\n"
-    "  • Do not narrate the scene ('Mr. Williams is roomed and ready.').\n"
-    "  • Do not suggest next steps before the trainee has acted.\n"
-    "  • Do not repeat what the trainee can already see in the UI.\n"
-    "  • Do not reveal the correct diagnosis before disposition.\n\n"
-
-    "DEBRIEF MODE — end-of-encounter grading.\n\n"
-
-    "When you receive a [debrief request] message, the trainee has ended "
-    "the encounter. The message body contains, as JSON:\n"
-    "  • case_id and the case's correctDiagnosisId (gold standard).\n"
-    "  • rubric — a CaseRubric with three domains "
-    "(data_gathering, clinical_management, interpersonal) plus optional "
-    "safety_netting. Each criterion has a label, weight, and an "
-    "`evidence` string telling you exactly what counts as 'met'.\n"
-    "  • registry_slice — the subset of guidelines/recommendations cited "
-    "by the rubric. Use ONLY recIds that appear here. Do not invent.\n"
-    "  • encounter_log — chronological list of: history questions asked "
-    "(with answers shown to the trainee), tests ordered with timestamps, "
-    "treatments/prescriptions given, the submitted diagnosis, and any "
-    "free-text counselling captured. Plus the voice transcript if "
-    "available.\n\n"
+    "The user message is one JSON object with:\n"
+    "  • case_summary — chief complaint, gold-standard diagnosis id, options, "
+    "severity, age, gender.\n"
+    "  • rubric — three domains (data_gathering, clinical_management, "
+    "interpersonal) plus optional safety_netting. Every criterion has an id, "
+    "label, weight and an `evidence` string describing what counts as met.\n"
+    "  • registry_slice — only the guidelines/recommendations cited by the "
+    "rubric. Use ONLY recIds that appear here. Never invent a citation.\n"
+    "  • encounter_log — history questions asked, tests ordered with "
+    "timestamps, treatments/prescriptions given, submitted diagnosis and "
+    "whether it was correct. Voice transcript may be included.\n\n"
 
     "Process:\n"
-    "  1. For every criterion in rubric.data_gathering, "
-    "rubric.clinical_management, and rubric.interpersonal, decide one of "
-    "{met, partially-met, missed} using the criterion's `evidence` field "
-    "as your match key. Quote the trainee directly or name the action "
-    "in the `evidence` field of your output (not the rubric's evidence "
-    "string — your own observation).\n"
-    "  2. Compute domain_scores: raw = sum of weights for met (1.0×) + "
-    "partially-met (0.5×); max = sum of all weights in that domain. "
-    "Verdict bands: ≥0.85 excellent, ≥0.70 good, ≥0.55 satisfactory, "
-    "≥0.40 borderline, otherwise clear-fail.\n"
-    "  3. Set global_rating with the same bands applied to the total "
-    "across all three domains.\n"
-    "  4. If the trainee did anything dangerous — contraindicated drug, "
-    "missed a red-flag escalation that the rubric flagged, no safety-"
-    "netting on a high-risk diagnosis — set safety_breach with `what` "
-    "and a guideline_ref if one applies. The narrative MUST lead with "
-    "this regardless of the score.\n"
-    "  5. Pick 1–3 highlights (specific strengths the trainee actually "
-    "demonstrated) and 1–3 improvements (priority gaps). Do not list "
-    "everything; the trainee tunes out.\n"
-    "  6. Write narrative last, 1–2 paragraphs, voice of a senior "
-    "clinician giving a teaching debrief immediately after the case. "
-    "No praise sandwiches, no sycophancy, no generic encouragement.\n"
-    "  7. Emit ONE render_case_evaluation tool use with the full payload. "
-    "Then stop.\n\n"
+    "  1. For EVERY rubric criterion decide exactly one verdict: met, "
+    "partially-met or missed. Match against that criterion's `evidence` field. "
+    "Quote the trainee directly or name the action in your own `evidence`. "
+    "Return the same criterion_id and domain as the rubric; do not add "
+    "criteria and do not omit any.\n"
+    "  2. For clinical_management criteria set guideline_ref to a recId from "
+    "registry_slice in the form '<guideline_id>:<rec_id>'. If no listed "
+    "recommendation applies, set guideline_ref to null — never fabricate.\n"
+    "  3. Set safety_breach ONLY for dangerous performance: contraindicated "
+    "drug, missed red-flag escalation, or no safety-netting on a high-risk "
+    "diagnosis. Otherwise null. If set, the narrative MUST lead with it.\n"
+    "  4. Pick 1–3 specific highlights and 1–3 priority improvements. No "
+    "generic encouragement.\n"
+    "  5. Write the narrative last: 1–2 paragraphs in the voice of a senior "
+    "clinician giving an immediate teaching debrief. Specific, direct, no "
+    "praise sandwich, no sycophancy. Do not give advice for real patients.\n\n"
 
-    "Hard rules — non-negotiable:\n"
-    "  • Cite, don't invent. Every clinical_management criterion's "
-    "guideline_ref MUST appear in the registry_slice. If the rubric "
-    "criterion has no guideline_ref AND no rec applies, drop the "
-    "criterion from your output rather than fabricating one.\n"
-    "  • Specific evidence. 'You missed ICE' is not enough. 'You closed "
-    "without asking what the patient was worried about — they hinted at "
-    "fear of stroke when they mentioned their father; that was a chance "
-    "to address concerns and tailor the explanation.' is the bar.\n"
-    "  • No medical advice for real patients. This is a training "
-    "simulator. Do not frame any output as guidance for actual care.\n"
-    "  • Cases are synthetic and doses simplified — do not hold the "
-    "trainee to a recommendation that is not in the registry_slice.\n\n"
+    "Output schema (exact keys):\n"
+    '{"criteria":[{"criterion_id":"...","domain":'
+    '"data_gathering|clinical_management|interpersonal",'
+    '"verdict":"met|partially-met|missed","evidence":"...",'
+    '"guideline_ref":"guideline_id:rec_id|null"}],'
+    '"safety_breach":{"what":"...","guideline_ref":"...|null"}|null,'
+    '"highlights":["..."],"improvements":["..."],"narrative":"..."}\n\n'
 
-    "Scope: the cases are synthetic, the medication doses are simplified, "
-    "and the trainee is not a licensed clinician. Do not offer medical "
-    "advice outside the simulator."
+    "Hard rules:\n"
+    "  • Every criterion verdict must cite transcript text or a named action; "
+    "'you missed ICE' is not acceptable evidence.\n"
+    "  • Never reveal or grade against material absent from the rubric and "
+    "registry_slice.\n"
+    "  • The cases are synthetic and doses simplified; grade only what the "
+    "trainee did in this encounter.\n"
+    "  • Never frame output as medical advice for real patients."
 )
 
-# Custom tool JSON schemas — must match the Zod schemas in
-# src/agents/customTools.ts. If you change either side, update both.
-MEDKIT_CUSTOM_TOOLS: list[dict] = [
-    {
-        "type": "custom",
-        "name": "render_vitals_chart",
-        "description": (
-            "Display the patient's vitals (HR, BP, SpO2, temp, RR) as a "
-            "line chart over the course of the encounter."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "patient_id": {"type": "string"},
-            },
-            "required": ["patient_id"],
-        },
-    },
-    {
-        "type": "custom",
-        "name": "render_bed_map",
-        "description": (
-            "Display the current bed occupancy map across the four ER beds."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-        },
-    },
-    {
-        "type": "custom",
-        "name": "render_triage_badge",
-        "description": (
-            "Display a triage-priority badge with a one-line rationale."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "zone": {"type": "string", "enum": ["red", "yellow", "green"]},
-                "reason": {"type": "string"},
-            },
-            "required": ["zone", "reason"],
-        },
-    },
-    {
-        "type": "custom",
-        "name": "render_patient_timeline",
-        "description": (
-            "Display the tests ordered and treatments given for a patient "
-            "in chronological order."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "patient_id": {"type": "string"},
-            },
-            "required": ["patient_id"],
-        },
-    },
-    {
-        # End-of-encounter OSCE debrief. Replaces the older
-        # `render_case_grade` (a flat score+notes blob): this one carries
-        # a per-criterion verdict, three-domain scores, citations into the
-        # guideline registry the frontend ships with the debrief request,
-        # and a 1–2 paragraph spoken-aloud narrative. The renderer
-        # `<CaseEvaluationCard>` resolves every `guideline_ref` against the
-        # registry and shows a verbatim cite-card next to each criterion.
-        #
-        # The Zod schema in src/agents/customTools.ts must mirror this; if
-        # you change one, update the other.
-        "type": "custom",
-        "name": "render_case_evaluation",
-        "description": (
-            "End-of-encounter PLAB2-style debrief. Emit exactly once after "
-            "the trainee submits their diagnosis (and prescription, in "
-            "polyclinic). Score three domains (data_gathering, clinical_"
-            "management, interpersonal) against the case rubric provided "
-            "in the debrief request. Each criterion verdict (met / "
-            "partially-met / missed) must be backed by a transcript quote "
-            "or a named action. Every clinical_management criterion's "
-            "guideline_ref MUST be a real recommendation id present in the "
-            "guideline registry slice that accompanies the debrief request "
-            "— if no rec applies, drop the criterion. Never fabricate."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "case_id": {"type": "string"},
-                "global_rating": {
-                    "type": "string",
-                    "enum": [
-                        "clear-fail",
-                        "borderline",
-                        "satisfactory",
-                        "good",
-                        "excellent",
-                    ],
-                },
-                "domain_scores": {
-                    "type": "object",
-                    "properties": {
-                        "data_gathering": {
-                            "type": "object",
-                            "properties": {
-                                "raw": {"type": "number"},
-                                "max": {"type": "number"},
-                                "verdict": {
-                                    "type": "string",
-                                    "enum": [
-                                        "clear-fail",
-                                        "borderline",
-                                        "satisfactory",
-                                        "good",
-                                        "excellent",
-                                    ],
-                                },
-                            },
-                            "required": ["raw", "max", "verdict"],
-                        },
-                        "clinical_management": {
-                            "type": "object",
-                            "properties": {
-                                "raw": {"type": "number"},
-                                "max": {"type": "number"},
-                                "verdict": {
-                                    "type": "string",
-                                    "enum": [
-                                        "clear-fail",
-                                        "borderline",
-                                        "satisfactory",
-                                        "good",
-                                        "excellent",
-                                    ],
-                                },
-                            },
-                            "required": ["raw", "max", "verdict"],
-                        },
-                        "interpersonal": {
-                            "type": "object",
-                            "properties": {
-                                "raw": {"type": "number"},
-                                "max": {"type": "number"},
-                                "verdict": {
-                                    "type": "string",
-                                    "enum": [
-                                        "clear-fail",
-                                        "borderline",
-                                        "satisfactory",
-                                        "good",
-                                        "excellent",
-                                    ],
-                                },
-                            },
-                            "required": ["raw", "max", "verdict"],
-                        },
-                    },
-                    "required": [
-                        "data_gathering",
-                        "clinical_management",
-                        "interpersonal",
-                    ],
-                },
-                "criteria": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "criterion_id": {"type": "string"},
-                            "domain": {
-                                "type": "string",
-                                "enum": [
-                                    "data_gathering",
-                                    "clinical_management",
-                                    "interpersonal",
-                                ],
-                            },
-                            "verdict": {
-                                "type": "string",
-                                "enum": ["met", "partially-met", "missed"],
-                            },
-                            "evidence": {"type": "string"},
-                            "guideline_ref": {
-                                "type": ["string", "null"],
-                                "description": (
-                                    "Format: '<guideline_id>:<rec_id>'. "
-                                    "Required for clinical_management; "
-                                    "optional elsewhere; null if not "
-                                    "applicable."
-                                ),
-                            },
-                        },
-                        "required": [
-                            "criterion_id",
-                            "domain",
-                            "verdict",
-                            "evidence",
-                        ],
-                    },
-                },
-                "safety_breach": {
-                    "type": ["object", "null"],
-                    "description": (
-                        "Set ONLY when the trainee did something dangerous "
-                        "(contraindicated drug, missed red flag, no safety-"
-                        "netting on a high-risk dx). The narrative must "
-                        "lead with this regardless of total score."
-                    ),
-                    "properties": {
-                        "what": {"type": "string"},
-                        "guideline_ref": {"type": ["string", "null"]},
-                    },
-                },
-                "highlights": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "1–3 specific strengths.",
-                },
-                "improvements": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "1–3 priority improvements.",
-                },
-                "narrative": {
-                    "type": "string",
-                    "description": (
-                        "1–2 paragraph teaching debrief, written as if "
-                        "spoken aloud by a senior clinician. No praise "
-                        "sandwiches, no sycophancy."
-                    ),
-                },
-            },
-            "required": [
-                "case_id",
-                "global_rating",
-                "domain_scores",
-                "criteria",
-                "highlights",
-                "improvements",
-                "narrative",
-            ],
-        },
-    },
-    {
-        # Write-shaped tool: surfaces a disruptive banner in the trainee
-        # UI. Gated by the frontend permission policy — the renderer shows
-        # an approve/decline dialog and only acks once the human confirms.
-        # Custom tools aren't covered by Anthropic's own permission-policy
-        # gate (that's native + MCP tools only), so the confirm happens
-        # client-side in src/agents/eventStreamRenderer.tsx.
-        "type": "custom",
-        "name": "flag_critical_finding",
-        "description": (
-            "Raise a disruptive critical-finding banner on the trainee's "
-            "screen. Use ONLY when the patient is in imminent risk (peri-"
-            "arrest vitals, stroke window closing, anaphylaxis). Requires "
-            "explicit human confirmation before firing; do not expect the "
-            "result immediately."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "patient_id": {"type": "string"},
-                "severity": {"type": "string", "enum": ["critical", "urgent"]},
-                "reason": {"type": "string"},
-            },
-            "required": ["patient_id", "severity", "reason"],
-        },
-    },
-    {
-        # Credential-vault demo tool. When the agent emits this, the
-        # browser calls POST /agent/vault/ehr/lookup. The backend attaches
-        # the EHR auth token from server-side state (env var) and returns
-        # the fake record. The EHR_API_TOKEN never touches the Claude
-        # context or the browser — it's the "credential vault" pattern
-        # from Michael's Managed Agents session, modeled for a demo.
-        "type": "custom",
-        "name": "lookup_ehr_history",
-        "description": (
-            "Retrieve the patient's prior EHR encounters and medication "
-            "list from the hospital EHR system. The request is routed "
-            "through the credential vault so your context never sees "
-            "the EHR auth token."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "patient_id": {"type": "string"},
-            },
-            "required": ["patient_id"],
-        },
-    },
-]
-
-_anthropic_client: Optional["_Anthropic"] = None
-_anthropic_async_client: Optional["_AsyncAnthropic"] = None
 _openai_client: Optional["OpenAI"] = None
 _openai_async_client: Optional["AsyncOpenAI"] = None
-
-
-def _ensure_anthropic_available() -> None:
-    if not _HAS_ANTHROPIC:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "anthropic package not installed. Run `pip install "
-                "'anthropic>=0.88.0'` in the backend venv."
-            ),
-        )
 
 
 def _ensure_openai_available() -> None:
@@ -716,35 +263,9 @@ def _require_openai_key() -> str:
     if not key:
         raise HTTPException(
             status_code=500,
-            detail="OPENROUTER_API_KEY is not set server-side (required for patient persona + triage).",
+            detail="OPENROUTER_API_KEY is not set server-side (required for patient, triage and debrief).",
         )
     return key
-
-
-def _require_anthropic_key() -> str:
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        raise HTTPException(
-            status_code=500,
-            detail="ANTHROPIC_API_KEY is not set server-side (required for Managed Agents grading).",
-        )
-    return key
-
-
-def get_anthropic_client() -> "_Anthropic":
-    global _anthropic_client
-    if _anthropic_client is None:
-        _ensure_anthropic_available()
-        _anthropic_client = _Anthropic(api_key=_require_anthropic_key())
-    return _anthropic_client
-
-
-def get_async_anthropic_client() -> "_AsyncAnthropic":
-    global _anthropic_async_client
-    if _anthropic_async_client is None:
-        _ensure_anthropic_available()
-        _anthropic_async_client = _AsyncAnthropic(api_key=_require_anthropic_key())
-    return _anthropic_async_client
 
 
 def get_openai_client() -> "OpenAI":
@@ -769,323 +290,18 @@ def get_async_openai_client() -> "AsyncOpenAI":
     return _openai_async_client
 
 
-class BootstrapResponse(BaseModel):
-    agent_id: str
-    agent_version: int | None
-    environment_id: str
-    created: bool  # True if we created them this call, False if cached
-
-
-@app.post("/agent/bootstrap", response_model=BootstrapResponse)
-def bootstrap_agent():
-    """Idempotent: creates the medkit attending agent + environment if
-    MEDKIT_AGENT_ID and MEDKIT_ENV_ID aren't set; otherwise returns the
-    cached IDs.
-
-    When `created=True` the caller should persist `agent_id` and
-    `environment_id` into `backend/.env.local` (or the OS environment) so
-    the next startup skips the create calls.
-
-    The whole body runs under ``_bootstrap_lock`` so two racing clients
-    (e.g. Strict Mode double-mount with a cold server) don't each create
-    their own agent + environment.
-    """
-    with _bootstrap_lock:
-        # Re-read env vars under the lock — if an earlier racing call
-        # persisted the IDs (process-wide only; operator still needs to
-        # write .env.local for cross-restart), we skip the create.
-        agent_id = os.environ.get("MEDKIT_AGENT_ID")
-        env_id = os.environ.get("MEDKIT_ENV_ID")
-        if agent_id and env_id:
-            return BootstrapResponse(
-                agent_id=agent_id,
-                agent_version=None,
-                environment_id=env_id,
-                created=False,
-            )
-
-        client = get_anthropic_client()
-        try:
-            env = client.beta.environments.create(  # type: ignore[attr-defined]
-                name=ENV_NAME,
-                config={"type": "cloud", "networking": {"type": "unrestricted"}},
-            )
-            agent = client.beta.agents.create(  # type: ignore[attr-defined]
-                name=AGENT_NAME,
-                model=AGENT_MODEL,
-                system=MEDKIT_ATTENDING_SYSTEM_PROMPT,
-                tools=[
-                    {"type": "agent_toolset_20260401", "default_config": {"enabled": True}},
-                    *MEDKIT_CUSTOM_TOOLS,
-                ],
-            )
-        except Exception as e:
-            _agent_log.exception("bootstrap failed")
-            raise HTTPException(status_code=500, detail=f"bootstrap failed: {e}")
-
-        # Populate the in-process env vars so racing calls inside the same
-        # server process pick up the cached IDs. Operator still needs to
-        # persist them to backend/.env.local for the NEXT server restart.
-        os.environ["MEDKIT_AGENT_ID"] = agent.id
-        os.environ["MEDKIT_ENV_ID"] = env.id
-        _agent_log.info(
-            "bootstrap: created agent %s + env %s — persist these to "
-            "backend/.env.local before restarting the server",
-            agent.id, env.id,
-        )
-
-        return BootstrapResponse(
-            agent_id=agent.id,
-            agent_version=getattr(agent, "version", None),
-            environment_id=env.id,
-            created=True,
-        )
-
-
-class RefreshAgentResponse(BaseModel):
-    agent_id: str
-    version: int | None
-
-
-@app.post("/agent/refresh", response_model=RefreshAgentResponse)
-def refresh_agent():
-    """Push the current in-file system prompt + custom tools up to the
-    existing Agent object, creating a new version. Existing sessions keep
-    their pinned version; new sessions pick up the latest.
-
-    Use this whenever you edit ``MEDKIT_ATTENDING_SYSTEM_PROMPT`` or
-    ``MEDKIT_CUSTOM_TOOLS`` so the change takes effect without creating a
-    whole new Agent."""
-    agent_id = os.environ.get("MEDKIT_AGENT_ID")
-    if not agent_id:
-        raise HTTPException(
-            status_code=400,
-            detail="MEDKIT_AGENT_ID not set. Run /agent/bootstrap first.",
-        )
-    client = get_anthropic_client()
-    try:
-        # update() is optimistic-concurrency: pass the current version so
-        # we don't clobber a concurrent edit.
-        current = client.beta.agents.retrieve(agent_id)  # type: ignore[attr-defined]
-        updated = client.beta.agents.update(  # type: ignore[attr-defined]
-            agent_id,
-            version=current.version,
-            system=MEDKIT_ATTENDING_SYSTEM_PROMPT,
-            tools=[
-                {"type": "agent_toolset_20260401", "default_config": {"enabled": True}},
-                *MEDKIT_CUSTOM_TOOLS,
-            ],
-        )
-    except Exception as e:
-        _agent_log.exception("refresh failed")
-        raise HTTPException(status_code=500, detail=f"refresh failed: {e}")
-    _agent_log.info(
-        "refresh: agent %s bumped to version %s",
-        updated.id, getattr(updated, "version", None),
-    )
-    return RefreshAgentResponse(
-        agent_id=updated.id,
-        version=getattr(updated, "version", None),
-    )
-
-
-class CreateSessionRequest(BaseModel):
-    title: Optional[str] = None
-
-
-class CreateSessionResponse(BaseModel):
-    session_id: str
-
-
-@app.post("/agent/sessions", response_model=CreateSessionResponse)
-def create_session(req: CreateSessionRequest):
-    agent_id = os.environ.get("MEDKIT_AGENT_ID")
-    env_id = os.environ.get("MEDKIT_ENV_ID")
-    if not agent_id or not env_id:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "MEDKIT_AGENT_ID / MEDKIT_ENV_ID not set. Call POST /agent/bootstrap "
-                "first and persist the returned IDs into the environment."
-            ),
-        )
-    client = get_anthropic_client()
-    try:
-        session = client.beta.sessions.create(  # type: ignore[attr-defined]
-            agent=agent_id,
-            environment_id=env_id,
-            title=req.title or "medkit training shift",
-        )
-    except Exception as e:
-        _agent_log.exception("create_session failed")
-        raise HTTPException(status_code=500, detail=f"create_session failed: {e}")
-    _agent_log.info("create_session: %s", session.id)
-    return CreateSessionResponse(session_id=session.id)
-
-
-@app.get("/agent/sessions/{session_id}")
-async def get_session(session_id: str):
-    """Fetch a session's status + usage. Used by debug tooling; the
-    frontend hook doesn't need this path day-to-day."""
-    client = get_async_anthropic_client()
-    try:
-        session = await client.beta.sessions.retrieve(session_id)  # type: ignore[attr-defined]
-    except Exception as e:
-        _agent_log.exception("get_session failed session_id=%s", session_id)
-        raise HTTPException(status_code=500, detail=f"get_session failed: {e}")
-    return (
-        session.model_dump(mode="json")
-        if hasattr(session, "model_dump")
-        else dict(session)
-    )
-
-
-@app.post("/agent/sessions/{session_id}/events")
-async def send_events(session_id: str, request: Request):
-    try:
-        body = await request.json()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"invalid JSON body: {e}")
-    events = body.get("events") if isinstance(body, dict) else None
-    if not isinstance(events, list) or not events:
-        raise HTTPException(status_code=400, detail="events must be a non-empty list")
-    # Use the ASYNC client here — this endpoint is `async def`, so calling
-    # the sync client would block uvicorn's event loop thread and starve
-    # the SSE stream handlers running in the same loop.
-    client = get_async_anthropic_client()
-    try:
-        await client.beta.sessions.events.send(  # type: ignore[attr-defined]
-            session_id=session_id, events=events
-        )
-    except Exception as e:
-        _agent_log.exception(
-            "send_events failed session_id=%s event_count=%d",
-            session_id, len(events),
-        )
-        raise HTTPException(status_code=500, detail=f"send_events failed: {e}")
-    return {"ok": True}
-
-
-@app.get("/agent/sessions/{session_id}/events")
-async def list_events(session_id: str, limit: int = 1000):
-    """Paginated history — used by the browser on reconnect to backfill
-    events emitted while the SSE stream was down."""
-    client = get_async_anthropic_client()
-    try:
-        page = await client.beta.sessions.events.list(  # type: ignore[attr-defined]
-            session_id=session_id, limit=limit
-        )
-    except Exception as e:
-        _agent_log.exception("list_events failed session_id=%s", session_id)
-        raise HTTPException(status_code=500, detail=f"list_events failed: {e}")
-    data = getattr(page, "data", None) or []
-    return {
-        "data": [
-            e.model_dump(mode="json") if hasattr(e, "model_dump") else dict(e)
-            for e in data
-        ]
-    }
-
-
-@app.get("/agent/sessions/{session_id}/stream")
-async def stream_events(session_id: str, request: Request):
-    """SSE passthrough. Each Managed-Agents event becomes one SSE
-    ``event:``/``data:`` pair so EventSource in the browser can dispatch
-    by type.
-
-    Uses the ASYNC Anthropic client so long-lived streams cooperate with
-    FastAPI's event loop — a synchronous generator here would tie up a
-    threadpool worker per open stream, and with hot-reloading + Strict
-    Mode double-mount, those streams pile up and saturate the pool,
-    which makes EVERY endpoint (including /health) stop responding.
-
-    Three robustness features:
-      1. ``request.is_disconnected()`` checked on every tick, so the
-         upstream stream is released as soon as the browser closes its
-         EventSource.
-      2. ``asyncio.wait_for`` wraps ``anext`` with a timeout — if no
-         upstream event arrives for ``SSE_KEEPALIVE_SEC`` seconds we
-         emit a comment line (``: keepalive\\n\\n``) to keep the socket
-         warm and to run the disconnect check. Without this the browser
-         (Chrome ~30s, nginx default 60s, corporate proxies often less)
-         can silently drop idle streams.
-      3. Any exception bubbling out of the upstream SDK becomes a
-         ``proxy_error`` SSE event so the client knows the pipe died
-         instead of silently seeing EOF.
-    """
-    client = get_async_anthropic_client()
-
-    async def generator():
-        # Small preamble so proxies don't buffer the response.
-        yield ": connected\n\n"
-        try:
-            # In the async SDK, events.stream() is a coroutine that
-            # resolves to the async context manager — must be awaited
-            # first. Synchronous SDK returns the context manager directly.
-            stream_ctx = await client.beta.sessions.events.stream(  # type: ignore[attr-defined]
-                session_id=session_id
-            )
-            async with stream_ctx as stream:
-                aiter_stream = stream.__aiter__()
-                while True:
-                    if await request.is_disconnected():
-                        break
-                    try:
-                        event = await asyncio.wait_for(
-                            aiter_stream.__anext__(),
-                            timeout=SSE_KEEPALIVE_SEC,
-                        )
-                    except asyncio.TimeoutError:
-                        # No event from upstream in the keepalive window;
-                        # poke the connection and loop to re-check
-                        # is_disconnected.
-                        yield ": keepalive\n\n"
-                        continue
-                    except StopAsyncIteration:
-                        break
-                    payload = (
-                        event.model_dump(mode="json")
-                        if hasattr(event, "model_dump")
-                        else dict(event)
-                    )
-                    etype = payload.get("type", "message")
-                    data = json.dumps(payload, default=str)
-                    yield f"event: {etype}\ndata: {data}\n\n"
-        except asyncio.CancelledError:
-            # Client disconnected mid-await; let it propagate so the
-            # upstream context manager (``async with``) cleans up, but
-            # don't treat it as an error.
-            raise
-        except Exception as e:
-            _agent_log.exception("SSE stream failed session_id=%s", session_id)
-            err = json.dumps({"type": "proxy_error", "message": str(e)})
-            yield f"event: proxy_error\ndata: {err}\n\n"
-
-    return StreamingResponse(
-        generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # disables nginx buffering if behind one
-        },
-    )
-
-
 # ───────────────────────────────────────────────────────────────────────────
 # Credential vault — hospital EHR stub
 # ───────────────────────────────────────────────────────────────────────────
 #
-# Demo of Michael's "credential vault" pattern: a third-party system
-# (fake hospital EHR) needs an auth token to query patient history. The
-# token lives ONLY on the backend (EHR_API_TOKEN env var). The agent's
-# context window never sees it, the browser never sees it, and it never
-# appears in any event written to the Managed Agents session.
+# Credential-vault demo: a third-party system (fake hospital EHR) needs
+# an auth token to query patient history. The token lives ONLY on the
+# backend (EHR_API_TOKEN env var); neither the browser nor the model
+# context ever sees it.
 #
 # Flow:
-#   1. Agent emits agent.custom_tool_use name=lookup_ehr_history.
-#   2. Browser receives the event, POSTs to /agent/vault/ehr/lookup.
-#   3. This endpoint attaches EHR_API_TOKEN server-side, calls the fake
+#   1. The UI (or a future agent tool) POSTs patient_id.
+#   2. This endpoint attaches EHR_API_TOKEN server-side, calls the fake
 #      EHR (local dict for the demo; would be an HTTP call in prod),
 #      and returns the history JSON.
 #   4. Browser posts the JSON back as user.custom_tool_result.
@@ -1191,10 +407,9 @@ def vault_ehr_lookup(req: EhrLookupRequest):
 # Triage-reasoning endpoint (direct OpenAI-compatible inference)
 # ───────────────────────────────────────────────────────────────────────────
 #
-# Separate from the medkit-attending Managed Agent. That agent observes the
-# whole encounter and grades it; this endpoint is a one-shot ESI triage
-# classification called at ER arrival, before the agent has seen enough
-# to form an opinion. Uses TRIAGE_MODEL via OpenRouter.
+# One-shot ESI triage classification called at ER arrival, before the
+# debrief grader has anything to work with. Uses TRIAGE_MODEL via
+# OpenRouter's free tier.
 #
 # Design notes:
 #   • Pure function `run_triage_reasoning_openai(client, request)` so unit
@@ -1228,6 +443,7 @@ ESI_TRIAGE_SYSTEM_PROMPT = (
     "acuity (ankle sprain, viral URI, chronic-stable presentations).\n"
     "5. If uncertain between two levels, choose the higher severity.\n\n"
 
+    "Write the rationale in Turkish (tr-TR).\n"
     "Respond with STRICT JSON ONLY, no prose, matching:\n"
     '{"esi_level": "critical"|"urgent"|"stable", '
     '"rationale": "<one sentence citing specific vitals or red flags>", '
@@ -1352,6 +568,232 @@ def triage_classify(req: TriageClassifyRequest):
 
 
 # ───────────────────────────────────────────────────────────────────────────
+# Debrief grading (free OpenRouter model, single structured call)
+# ───────────────────────────────────────────────────────────────────────────
+#
+# Replaces the paid Anthropic Managed Agent. The browser posts the rubric,
+# the guideline slice and the encounter log; the model returns per-criterion
+# verdicts plus a narrative. Domain scores and the global rating are computed
+# HERE from the rubric weights so a model arithmetic slip cannot change the
+# grade.
+
+GRADE_BANDS = (
+    (0.85, "excellent"),
+    (0.70, "good"),
+    (0.55, "satisfactory"),
+    (0.40, "borderline"),
+)
+DEBRIEF_MAX_TOKENS = int(os.environ.get("DEBRIEF_MAX_TOKENS", "4096"))
+DEBRIEF_TIMEOUT_SEC = float(os.environ.get("DEBRIEF_TIMEOUT_SEC", "90"))
+ALLOWED_VERDICTS = {"met", "partially-met", "missed"}
+DOMAINS = ("data_gathering", "clinical_management", "interpersonal")
+
+
+class DebriefRequest(BaseModel):
+    case_id: str
+    case_summary: dict = {}
+    rubric: dict
+    registry_slice: list[dict] = []
+    encounter_log: dict = {}
+
+
+class DebriefResponse(BaseModel):
+    evaluation: dict
+    model: str
+
+
+def _band(ratio: float) -> str:
+    for floor, label in GRADE_BANDS:
+        if ratio >= floor:
+            return label
+    return "clear-fail"
+
+
+def _rubric_weights(rubric: dict) -> dict[str, tuple[str, float]]:
+    out: dict[str, tuple[str, float]] = {}
+    for domain in DOMAINS:
+        for cr in rubric.get(domain, []) or []:
+            cid = str(cr.get("criterion_id", "")).strip()
+            if not cid:
+                continue
+            try:
+                weight = float(cr.get("weight", 1))
+            except (TypeError, ValueError):
+                weight = 1.0
+            out[cid] = (domain, weight)
+    return out
+
+
+def _allowed_refs(registry_slice: list[dict]) -> set[str]:
+    refs: set[str] = set()
+    for g in registry_slice:
+        gid = str(g.get("id", "")).strip()
+        for rec in g.get("recommendations", []) or []:
+            rid = str(rec.get("recId", "")).strip()
+            if gid and rid:
+                refs.add(f"{gid}:{rid}")
+    return refs
+
+
+def _strip_json(raw: str) -> str:
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        if raw.lower().startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    start, end = raw.find("{"), raw.rfind("}")
+    if start >= 0 and end > start:
+        raw = raw[start : end + 1]
+    return raw
+
+
+def run_debrief_evaluation_openai(
+    client: "OpenAI",
+    req: DebriefRequest,
+) -> DebriefResponse:
+    """Grade one encounter through an OpenAI-compatible free model."""
+    weights = _rubric_weights(req.rubric)
+    if not weights:
+        raise HTTPException(status_code=400, detail="rubric contains no criteria")
+    user_payload = json.dumps(req.model_dump(), ensure_ascii=False)
+    response = client.chat.completions.create(  # type: ignore[attr-defined]
+        model=GRADER_MODEL,
+        max_tokens=DEBRIEF_MAX_TOKENS,
+        temperature=0.2,
+        timeout=DEBRIEF_TIMEOUT_SEC,
+        messages=[
+            {"role": "system", "content": DEBRIEF_SYSTEM_PROMPT},
+            {"role": "user", "content": user_payload},
+        ],
+    )
+    raw = (response.choices[0].message.content or "").strip()
+    if not raw:
+        raise HTTPException(status_code=502, detail="debrief model returned empty response")
+    try:
+        parsed = json.loads(_strip_json(raw))
+    except ValueError as e:
+        _agent_log.warning("debrief: malformed JSON: %s", raw[:300])
+        raise HTTPException(
+            status_code=502,
+            detail=f"debrief model returned malformed JSON: {e}",
+        )
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=502, detail="debrief model returned a non-object")
+
+    allowed_refs = _allowed_refs(req.registry_slice)
+
+    by_id: dict[str, dict] = {}
+    for item in parsed.get("criteria", []) or []:
+        if not isinstance(item, dict):
+            continue
+        cid = str(item.get("criterion_id", "")).strip()
+        if cid not in weights:
+            continue
+        verdict = str(item.get("verdict", "")).strip().lower().replace("_", "-")
+        if verdict not in ALLOWED_VERDICTS:
+            verdict = "missed"
+        evidence = str(item.get("evidence", "")).strip()
+        if not evidence:
+            evidence = "Değerlendirme çıktısında bu kriter için kanıt yok."
+        ref = item.get("guideline_ref")
+        ref = str(ref).strip() if ref else None
+        if ref not in allowed_refs:
+            ref = None
+        by_id[cid] = {
+            "criterion_id": cid,
+            "domain": weights[cid][0],
+            "verdict": verdict,
+            "evidence": evidence,
+            "guideline_ref": ref,
+        }
+
+    criteria: list[dict] = []
+    for cid, (domain, _weight) in weights.items():
+        if cid in by_id:
+            criteria.append(by_id[cid])
+        else:
+            criteria.append(
+                {
+                    "criterion_id": cid,
+                    "domain": domain,
+                    "verdict": "missed",
+                    "evidence": "Değerlendirme çıktısında bu kriter ele alınmamış.",
+                    "guideline_ref": None,
+                }
+            )
+
+    domain_scores: dict[str, dict] = {}
+    total_raw = 0.0
+    total_max = 0.0
+    for domain in DOMAINS:
+        raw_score = 0.0
+        max_score = 0.0
+        for cid, (d, weight) in weights.items():
+            if d != domain:
+                continue
+            max_score += weight
+            verdict = by_id.get(cid, {}).get("verdict", "missed")
+            raw_score += weight * (1.0 if verdict == "met" else 0.5 if verdict == "partially-met" else 0.0)
+        total_raw += raw_score
+        total_max += max_score
+        domain_scores[domain] = {
+            "raw": round(raw_score, 2),
+            "max": round(max_score, 2),
+            "verdict": _band(raw_score / max_score) if max_score else "clear-fail",
+        }
+
+    safety = parsed.get("safety_breach")
+    if isinstance(safety, dict) and str(safety.get("what", "")).strip():
+        sref = safety.get("guideline_ref")
+        sref = str(sref).strip() if sref else None
+        if sref not in allowed_refs:
+            sref = None
+        safety_breach = {"what": str(safety["what"]).strip(), "guideline_ref": sref}
+    else:
+        safety_breach = None
+
+    def _string_list(value: object, limit: int) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        out = [str(x).strip() for x in value if str(x).strip()]
+        return out[:limit]
+
+    highlights = _string_list(parsed.get("highlights"), 3)
+    improvements = _string_list(parsed.get("improvements"), 3)
+    narrative = str(parsed.get("narrative", "")).strip()
+    if not narrative:
+        raise HTTPException(status_code=502, detail="debrief model returned no narrative")
+    if not highlights:
+        highlights = ["Belirgin bir güçlü yön kaydedilmedi."]
+    if not improvements:
+        improvements = ["Değerlendirme için yeterli kayıt yok; öykü ve gerekçeyi daha açık belirtin."]
+
+    evaluation = {
+        "case_id": req.case_id,
+        "global_rating": _band(total_raw / total_max) if total_max else "clear-fail",
+        "domain_scores": domain_scores,
+        "criteria": criteria,
+        "safety_breach": safety_breach,
+        "highlights": highlights,
+        "improvements": improvements,
+        "narrative": narrative,
+    }
+    _agent_log.info(
+        "debrief: case=%s criteria=%d global=%s",
+        req.case_id, len(criteria), evaluation["global_rating"],
+    )
+    return DebriefResponse(evaluation=evaluation, model=GRADER_MODEL)
+
+
+@app.post("/agent/debrief", response_model=DebriefResponse)
+def debrief(req: DebriefRequest):
+    """OSCE değerlendirmesi — OpenRouter ücretsiz model, tek çağrı."""
+    client = get_openai_client()
+    return run_debrief_evaluation_openai(client, req)
+
+
+# ───────────────────────────────────────────────────────────────────────────
 # Patient persona streaming — Nemotron via OpenRouter
 # ───────────────────────────────────────────────────────────────────────────
 #
@@ -1361,7 +803,7 @@ def triage_classify(req: TriageClassifyRequest):
 # (max 256 tokens) so we skip the keepalive logic the long-lived agent
 # stream needs.
 
-PATIENT_MODEL = os.environ.get("PATIENT_MODEL", "nvidia/nemotron-3-ultra:free")
+PATIENT_MODEL = os.environ.get("PATIENT_MODEL", FREE_MODEL)
 PATIENT_MAX_TOKENS = 256
 
 
@@ -1477,7 +919,12 @@ async def voice_token(req: VoiceTokenRequest):
     # explicit by name instead of relying on LiveKit's automatic region/cluster
     # matching, which fails when the room-creator (Render Oregon) and the
     # worker (registered in EU/Germany 2) are in different clouds.
-    lkapi = _lkapi.LiveKitAPI(lk_url, lk_key, lk_secret)
+    # Local dev servers expose Twirp over http:// while the browser client
+    # needs ws://. Allow overriding the admin URL separately.
+    lk_api_url = os.environ.get("LIVEKIT_API_URL") or (
+        lk_url.replace("wss://", "https://", 1).replace("ws://", "http://", 1)
+    )
+    lkapi = _lkapi.LiveKitAPI(lk_api_url, lk_key, lk_secret)
     try:
         await lkapi.room.create_room(
             _lkapi.CreateRoomRequest(
