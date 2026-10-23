@@ -2,7 +2,7 @@
 # Tek terminalde medkit geliştirme ortamı.
 #
 #   npm run app         → Vite (5173) + FastAPI backend (8787)
-#   npm run app:voice   → yukarıdakiler + LiveKit ses worker'ı
+#   npm run app:voice   → yukarıdakiler + LiveKit (7880) + ses worker'ı
 #
 # Ctrl+C hepsini birlikte kapatır. Zaten açık olan bir servis atlanır,
 # yani yanlışlıkla ikinci kez çalıştırmak zarar vermez.
@@ -25,6 +25,7 @@ LOG_DIR="${MEDKIT_LOG_DIR:-/tmp}"
 BACKEND_LOG="$LOG_DIR/medkit-backend.log"
 VITE_LOG="$LOG_DIR/medkit-vite.log"
 VOICE_LOG="$LOG_DIR/medkit-voice.log"
+LIVEKIT_LOG="$LOG_DIR/medkit-livekit.log"
 
 pids=()
 
@@ -140,20 +141,46 @@ else
   open_browser "http://127.0.0.1:5173"
 fi
 
+# ── LiveKit sunucusu (yerel URL ise) ────────────────────
+# Yerel WebRTC için ayrı bir terminal açmaya gerek kalmasın diye burada
+# başlatılır. Bulut URL'i (wss://) kullanılıyorsa hiçbir şey yapılmaz.
+start_livekit() {
+  local lk_url key secret
+  lk_url=$(grep -E "^LIVEKIT_URL=" backend/.env.local 2>/dev/null | head -1 | cut -d= -f2-)
+  case "$lk_url" in
+    ws://127.0.0.1*|ws://localhost*) ;;
+    *) return 0 ;;
+  esac
+
+  if port_busy 7880; then
+    echo "[atla] livekit-server zaten çalışıyor (:7880)"
+    return 0
+  fi
+  if ! command -v livekit-server >/dev/null 2>&1; then
+    echo "[uyarı] livekit-server bulunamadı; ses worker'ı atlanıyor." >&2
+    echo "        Kurulum: https://github.com/livekit/livekit/releases (linux_amd64)" >&2
+    echo "        ya da .env.local içinde LIVEKIT_URL'i LiveKit Cloud (wss://…) yap." >&2
+    return 1
+  fi
+
+  key=$(grep -E "^LIVEKIT_API_KEY=" backend/.env.local 2>/dev/null | head -1 | cut -d= -f2-)
+  secret=$(grep -E "^LIVEKIT_API_SECRET=" backend/.env.local 2>/dev/null | head -1 | cut -d= -f2-)
+  if [ "$key" != "devkey" ] || [ "$secret" != "secret" ]; then
+    echo "[uyarı] LIVEKIT_API_KEY/SECRET devkey/secret değil; --dev modu devkey/secret kullanır." >&2
+  fi
+
+  setsid livekit-server --dev --bind 127.0.0.1 \
+    > >(sed -u 's/^/[livekit] /' | tee -a "$LIVEKIT_LOG") 2>&1 &
+  pids+=("$!")
+  echo "[başladı] livekit-server → ws://127.0.0.1:7880  (log: $LIVEKIT_LOG)"
+  return 0
+}
+
 # ── ses worker'ı (opsiyonel) ────────────────────────────
 if [ "$WITH_VOICE" -eq 1 ]; then
   if [ ! -x backend/.venv-voice/bin/python ]; then
     echo "[uyarı] backend/.venv-voice yok — ses worker'ı atlandı." >&2
-  else
-    lk_url=$(grep -E "^LIVEKIT_URL=" backend/.env.local 2>/dev/null | head -1 | cut -d= -f2-)
-    case "$lk_url" in
-      ws://127.0.0.1*|ws://localhost*)
-        if ! port_busy 7880; then
-          echo "[uyarı] yerel livekit-server kapalı (:7880)."
-          echo "        Ayrı bir terminalde: livekit-server --dev --bind 127.0.0.1"
-        fi
-        ;;
-    esac
+  elif start_livekit; then
     setsid backend/.venv-voice/bin/python backend/voice_agent.py dev \
       > >(sed -u 's/^/[voice] /' | tee -a "$VOICE_LOG") 2>&1 &
     pids+=("$!")

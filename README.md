@@ -144,16 +144,17 @@ ikinci kez çalıştırmak zarar vermez.
 
 ```bash
 npm run app         # Vite (5173) + FastAPI backend (8787)
-npm run app:voice   # + LiveKit ses worker'ı
+npm run app:voice   # + yerel LiveKit (7880) + ses worker'ı
 ```
 
 Canlı loglar `[backend]` / `[vite]` / `[voice]` önekleriyle aynı terminale
 akar. Tam loglar: `/tmp/medkit-backend.log`, `/tmp/medkit-vite.log`,
 `/tmp/medkit-voice.log`. Durdurunca terminal kapanır, arkada süreç kalmaz.
 
-> Ses worker'ı için LiveKit'in de ayakta olması gerekir (Cloud ya da yerel
-> `livekit-server --dev --bind 127.0.0.1`). `npm run voice:doctor` eksikleri
-> listeler.
+> `app:voice`, `.env.local` içindeki `LIVEKIT_URL` yerel (`ws://127.0.0.1:7880`)
+> ise `livekit-server --dev`'i de kendisi başlatır — ayrı terminal gerekmez.
+> Bulut URL'i (`wss://…`) kullanılıyorsa LiveKit'e dokunmaz. `npm run
+> voice:doctor` eksikleri listeler.
 
 ### Üç terminal (ayrı ayrı)
 
