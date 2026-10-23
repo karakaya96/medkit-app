@@ -9,6 +9,7 @@ import { useAttendingDebrief } from '../agents/useAttendingDebrief';
 import { buildDebriefRequest, summariseRequest } from '../agents/debriefRequest';
 import { saveEvalHistory, getEvalHistory, type EvalHistoryEntry } from '../data/evalHistory';
 import { diagnosisLabel } from '../data/diagnosisLabels';
+import { getRubricFor } from '../data/autoRubric';
 import {
   aggregateDomainScore,
   averagePercent,
@@ -1058,7 +1059,9 @@ function EvaluationBody({ evaluation, patient, c }: BodyProps) {
   const dgItems = evaluation.criteria.filter((x) => x.domain === 'data_gathering');
   const cmItems = evaluation.criteria.filter((x) => x.domain === 'clinical_management');
   const ipItems = evaluation.criteria.filter((x) => x.domain === 'interpersonal');
-  const rubric = c.rubric;
+  // Auto-derived cases have no authored `c.rubric`; use the same fallback the
+  // debrief request used so criterion titles are human-readable, not ids.
+  const rubric = getRubricFor(c);
   const labelByCriterionId = new Map<string, string>();
   if (rubric) {
     for (const cr of rubric.data_gathering) labelByCriterionId.set(cr.criterion_id, cr.label);
