@@ -61,7 +61,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Antibiotics ───────────
   {
     id: 'amoxicillin-clavulanate-1g',
-    name: 'Amoxicillin/Clavulanate 1g',
+    name: 'Amoksisilin/Klavulanat 1 g',
     form: 'tablet',
     category: 'antibiotic',
     class: 'Penisilin + β-laktamaz inhibitörü',
@@ -81,7 +81,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'azithromycin-500',
-    name: 'Azithromycin 500mg',
+    name: 'Azitromisin 500 mg',
     form: 'tablet',
     category: 'antibiotic',
     class: 'Makrolid antibiyotik',
@@ -98,7 +98,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'ciprofloxacin-500',
-    name: 'Ciprofloxacin 500mg',
+    name: 'Siprofloksasin 500 mg',
     form: 'tablet',
     category: 'antibiotic',
     class: 'Florokinolon antibiyotik',
@@ -116,7 +116,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'cefuroxime-500',
-    name: 'Cefuroxime Axetil 500mg',
+    name: 'Sefuroksim Aksetil 500 mg',
     form: 'tablet',
     category: 'antibiotic',
     class: '2. kuşak sefalosporin',
@@ -131,7 +131,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'doxycycline-100',
-    name: 'Doxycycline 100mg',
+    name: 'Doksisiklin 100 mg',
     form: 'tablet',
     category: 'antibiotic',
     class: 'Tetrasiklin antibiyotik',
@@ -150,7 +150,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'penicillin-v-500',
-    name: 'Penicillin V 500mg',
+    name: 'Penisilin V 500 mg',
     form: 'tablet',
     category: 'antibiotic',
     class: 'Doğal penisilin',
@@ -161,7 +161,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'metronidazole-500',
-    name: 'Metronidazole 500mg',
+    name: 'Metronidazol 500 mg',
     form: 'tablet',
     category: 'antibiotic',
     class: 'Nitroimidazol antibiyotik',
@@ -172,7 +172,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'nitrofurantoin-100',
-    name: 'Nitrofurantoin 100mg',
+    name: 'Nitrofurantoin 100 mg',
     form: 'capsule',
     category: 'antibiotic',
     class: 'Üriner antibiyotik',
@@ -183,7 +183,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'tmp-smx-ds',
-    name: 'Trimethoprim/Sulfamethoxazole DS',
+    name: 'Trimetoprim/Sülfametoksazol DS',
     form: 'tablet',
     category: 'antibiotic',
     class: 'Folat antagonisti antibiyotik',
@@ -194,7 +194,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'clotrimazole-vag',
-    name: 'Clotrimazole Vaginal Cream',
+    name: 'Klotrimazol Vajinal Krem',
     form: 'cream',
     category: 'antifungal',
     class: 'Topikal azol antifungal',
@@ -204,7 +204,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'acyclovir-800',
-    name: 'Acyclovir 800mg',
+    name: 'Asiklovir 800 mg',
     form: 'tablet',
     category: 'antiviral',
     class: 'Antiviral (nükleozid analogu)',
@@ -216,7 +216,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Antihypertensives ───────────
   {
     id: 'amlodipine-5',
-    name: 'Amlodipine 5mg',
+    name: 'Amlodipin 5 mg',
     form: 'tablet',
     category: 'cardiovascular',
     class: 'Kalsiyum kanal blokeri',
@@ -233,7 +233,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'ramipril-5',
-    name: 'Ramipril 5mg',
+    name: 'Ramipril 5 mg',
     form: 'tablet',
     category: 'cardiovascular',
     class: 'ACE inhibitörü',
@@ -261,7 +261,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'losartan-50',
-    name: 'Losartan 50mg',
+    name: 'Losartan 50 mg',
     form: 'tablet',
     category: 'cardiovascular',
     class: 'Anjiyotensin reseptör blokeri',
@@ -278,7 +278,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'metoprolol-50',
-    name: 'Metoprolol Succinate 50mg',
+    name: 'Metoprolol Süksinat 50 mg',
     form: 'tablet',
     category: 'cardiovascular',
     class: 'Kardiyoselektif β-bloker',
@@ -298,7 +298,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'bisoprolol-5',
-    name: 'Bisoprolol 5mg',
+    name: 'Bisoprolol 5 mg',
     form: 'tablet',
     category: 'cardiovascular',
     class: 'Kardiyoselektif β-bloker',
@@ -315,7 +315,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'hctz-25',
-    name: 'Hydrochlorothiazide 25mg',
+    name: 'Hidroklorotiyazid 25 mg',
     form: 'tablet',
     category: 'cardiovascular',
     class: 'Tiyazid diüretik',
@@ -326,7 +326,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'indapamide-15',
-    name: 'Indapamide SR 1.5mg',
+    name: 'Indapamid SR 1,5 mg',
     form: 'tablet',
     category: 'cardiovascular',
     class: 'Tiyazid benzeri diüretik',
@@ -337,7 +337,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'spironolactone-25',
-    name: 'Spironolactone 25mg',
+    name: 'Spironolakton 25 mg',
     form: 'tablet',
     category: 'cardiovascular',
     class: 'Aldosteron antagonisti',
@@ -350,7 +350,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Antidiabetics ───────────
   {
     id: 'metformin-500',
-    name: 'Metformin 500mg',
+    name: 'Metformin 500 mg',
     form: 'tablet',
     category: 'endocrine',
     class: 'Biguanid',
@@ -367,7 +367,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'gliclazide-30',
-    name: 'Gliclazide MR 30mg',
+    name: 'Gliklazid MR 30 mg',
     form: 'tablet',
     category: 'endocrine',
     class: 'Sülfonilüre',
@@ -378,7 +378,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'empagliflozin-10',
-    name: 'Empagliflozin 10mg',
+    name: 'Empagliflozin 10 mg',
     form: 'tablet',
     category: 'endocrine',
     class: 'SGLT2 inhibitörü',
@@ -395,7 +395,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'insulin-glargine',
-    name: 'Insulin Glargine (basal)',
+    name: 'İnsülin Glarjin (bazal)',
     form: 'injection',
     category: 'endocrine',
     class: 'Uzun etkili bazal insülin',
@@ -410,7 +410,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'insulin-aspart',
-    name: 'Insulin Aspart (bolus)',
+    name: 'İnsülin Aspart (bolus)',
     form: 'injection',
     category: 'endocrine',
     class: 'Hızlı etkili prandiyal insülin',
@@ -422,7 +422,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Analgesics / NSAIDs ───────────
   {
     id: 'paracetamol-500',
-    name: 'Paracetamol 500mg',
+    name: 'Parasetamol 500 mg',
     form: 'tablet',
     category: 'analgesic',
     class: 'Analjezik / antipiretik',
@@ -449,7 +449,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'ibuprofen-400',
-    name: 'Ibuprofen 400mg',
+    name: 'İbuprofen 400 mg',
     form: 'tablet',
     category: 'analgesic',
     class: 'NSAİİ',
@@ -480,7 +480,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'naproxen-500',
-    name: 'Naproxen 500mg',
+    name: 'Naproksen 500 mg',
     form: 'tablet',
     category: 'analgesic',
     class: 'NSAİİ',
@@ -500,7 +500,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'diclofenac-75',
-    name: 'Diclofenac 75mg',
+    name: 'Diklofenak 75 mg',
     form: 'tablet',
     category: 'analgesic',
     class: 'NSAİİ',
@@ -520,7 +520,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'tramadol-50',
-    name: 'Tramadol 50mg',
+    name: 'Tramadol 50 mg',
     form: 'capsule',
     category: 'analgesic',
     class: 'Zayıf opioid analjezik',
@@ -543,7 +543,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'colchicine-05',
-    name: 'Colchicine 0.5mg',
+    name: 'Kolşisin 0,5 mg',
     form: 'tablet',
     category: 'analgesic',
     class: 'Anti-gut ajanı',
@@ -554,7 +554,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'allopurinol-300',
-    name: 'Allopurinol 300mg',
+    name: 'Allopurinol 300 mg',
     form: 'tablet',
     category: 'analgesic',
     class: 'Ksantin oksidaz inhibitörü',
@@ -566,7 +566,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── PPIs / antacids / GI ───────────
   {
     id: 'pantoprazole-40',
-    name: 'Pantoprazole 40mg',
+    name: 'Pantoprazol 40 mg',
     form: 'tablet',
     category: 'gastrointestinal',
     class: 'Proton pompası inhibitörü',
@@ -582,7 +582,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'esomeprazole-40',
-    name: 'Esomeprazole 40mg',
+    name: 'Esomeprazol 40 mg',
     form: 'tablet',
     category: 'gastrointestinal',
     class: 'Proton pompası inhibitörü',
@@ -592,7 +592,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'famotidine-40',
-    name: 'Famotidine 40mg',
+    name: 'Famotidin 40 mg',
     form: 'tablet',
     category: 'gastrointestinal',
     class: 'H2 reseptör antagonisti',
@@ -602,7 +602,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'loperamide-2',
-    name: 'Loperamide 2mg',
+    name: 'Loperamid 2 mg',
     form: 'capsule',
     category: 'gastrointestinal',
     class: 'Opioid reseptörlü antidiyareik',
@@ -613,7 +613,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'ondansetron-8',
-    name: 'Ondansetron 8mg',
+    name: 'Ondansetron 8 mg',
     form: 'tablet',
     category: 'gastrointestinal',
     class: '5-HT3 antagonisti',
@@ -623,7 +623,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'metoclopramide-10',
-    name: 'Metoclopramide 10mg',
+    name: 'Metoklopramid 10 mg',
     form: 'tablet',
     category: 'gastrointestinal',
     class: 'Dopamin antagonisti antiemetik',
@@ -634,7 +634,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'lactulose-syrup',
-    name: 'Lactulose Syrup',
+    name: 'Laktuloz Şurup',
     form: 'solution',
     category: 'gastrointestinal',
     class: 'Ozmotik laksatif',
@@ -644,7 +644,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'mesalazine-1g',
-    name: 'Mesalazine 1g',
+    name: 'Mesalazin 1 g',
     form: 'tablet',
     category: 'gastrointestinal',
     class: '5-ASA',
@@ -656,7 +656,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Antihistamines ───────────
   {
     id: 'cetirizine-10',
-    name: 'Cetirizine 10mg',
+    name: 'Setirizin 10 mg',
     form: 'tablet',
     category: 'allergy',
     class: '2. kuşak H1 antihistaminik',
@@ -675,7 +675,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'levocetirizine-5',
-    name: 'Levocetirizine 5mg',
+    name: 'Levosetirizin 5 mg',
     form: 'tablet',
     category: 'allergy',
     class: '2. kuşak H1 antihistaminik',
@@ -690,7 +690,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'desloratadine-5',
-    name: 'Desloratadine 5mg',
+    name: 'Desloratadin 5 mg',
     form: 'tablet',
     category: 'allergy',
     class: '2. kuşak H1 antihistaminik',
@@ -700,7 +700,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'fexofenadine-180',
-    name: 'Fexofenadine 180mg',
+    name: 'Feksofenadin 180 mg',
     form: 'tablet',
     category: 'allergy',
     class: '2. kuşak H1 antihistaminik',
@@ -717,7 +717,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Asthma / COPD ───────────
   {
     id: 'salbutamol-inh',
-    name: 'Salbutamol Inhaler 100mcg',
+    name: 'Salbutamol İnhaler 100 mcg',
     form: 'spray',
     category: 'respiratory',
     class: 'Kısa etkili β2 agonist',
@@ -734,7 +734,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'budesonide-inh',
-    name: 'Budesonide Inhaler 200mcg',
+    name: 'Budesonid İnhaler 200 mcg',
     form: 'spray',
     category: 'respiratory',
     class: 'İnhaler kortikosteroid',
@@ -749,7 +749,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'formoterol-budesonide-inh',
-    name: 'Formoterol/Budesonide Inhaler',
+    name: 'Formoterol/Budesonid İnhaler',
     form: 'spray',
     category: 'respiratory',
     class: 'Uzun etkili β2 agonist + inhale kortikosteroid',
@@ -759,7 +759,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'tiotropium-inh',
-    name: 'Tiotropium Inhaler 18mcg',
+    name: 'Tiotropium İnhaler 18 mcg',
     form: 'spray',
     category: 'respiratory',
     class: 'Uzun etkili muskarinik antagonist',
@@ -769,7 +769,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'montelukast-10',
-    name: 'Montelukast 10mg',
+    name: 'Montelukast 10 mg',
     form: 'tablet',
     category: 'respiratory',
     class: 'Lökotrien reseptör antagonisti',
@@ -784,7 +784,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'fluticasone-nasal',
-    name: 'Fluticasone Nasal Spray',
+    name: 'Flutikazon Nazal Sprey',
     form: 'spray',
     category: 'respiratory',
     class: 'İntranazal kortikosteroid',
@@ -802,7 +802,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Thyroid ───────────
   {
     id: 'levothyroxine-50',
-    name: 'Levothyroxine 50mcg',
+    name: 'Levotiroksin 50 mcg',
     form: 'tablet',
     category: 'endocrine',
     class: 'Tiroid hormonu',
@@ -813,7 +813,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'methimazole-5',
-    name: 'Methimazole 5mg',
+    name: 'Metimazol 5 mg',
     form: 'tablet',
     category: 'endocrine',
     class: 'Antitiroid (tiyoamid)',
@@ -824,7 +824,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'propylthiouracil-50',
-    name: 'Propylthiouracil 50mg',
+    name: 'Propiltiyourasil 50 mg',
     form: 'tablet',
     category: 'endocrine',
     class: 'Antitiroid (tiyoamid)',
@@ -837,7 +837,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Statins / Lipids ───────────
   {
     id: 'atorvastatin-20',
-    name: 'Atorvastatin 20mg',
+    name: 'Atorvastatin 20 mg',
     form: 'tablet',
     category: 'lipid-lowering',
     class: 'HMG-CoA redüktaz inhibitörü',
@@ -855,7 +855,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'rosuvastatin-10',
-    name: 'Rosuvastatin 10mg',
+    name: 'Rosuvastatin 10 mg',
     form: 'tablet',
     category: 'lipid-lowering',
     class: 'HMG-CoA redüktaz inhibitörü',
@@ -866,7 +866,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'simvastatin-20',
-    name: 'Simvastatin 20mg',
+    name: 'Simvastatin 20 mg',
     form: 'tablet',
     category: 'lipid-lowering',
     class: 'HMG-CoA redüktaz inhibitörü',
@@ -877,7 +877,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'ezetimibe-10',
-    name: 'Ezetimibe 10mg',
+    name: 'Ezetimib 10 mg',
     form: 'tablet',
     category: 'lipid-lowering',
     class: 'Kolesterol emilim inhibitörü',
@@ -889,7 +889,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Cardiology (other) ───────────
   {
     id: 'aspirin-100',
-    name: 'Aspirin 100mg',
+    name: 'Aspirin 100 mg',
     form: 'tablet',
     category: 'antiplatelet-anticoagulant',
     class: 'Antiplatelet',
@@ -900,7 +900,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'clopidogrel-75',
-    name: 'Clopidogrel 75mg',
+    name: 'Klopidogrel 75 mg',
     form: 'tablet',
     category: 'antiplatelet-anticoagulant',
     class: 'Antiplatelet (P2Y12 inhibitörü)',
@@ -911,7 +911,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'apixaban-5',
-    name: 'Apixaban 5mg',
+    name: 'Apiksaban 5 mg',
     form: 'tablet',
     category: 'antiplatelet-anticoagulant',
     class: 'Direkt oral antikoagülan (Xa)',
@@ -922,7 +922,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'nitroglycerin-sl',
-    name: 'Nitroglycerin Sublingual 0.4mg',
+    name: 'Nitrogliserin Sublingual 0,4 mg',
     form: 'spray',
     category: 'cardiovascular',
     class: 'Nitrat',
@@ -932,7 +932,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'furosemide-40',
-    name: 'Furosemide 40mg',
+    name: 'Furosemid 40 mg',
     form: 'tablet',
     category: 'cardiovascular',
     class: 'Loop diüretik',
@@ -945,7 +945,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Antidepressants / anxiolytics ───────────
   {
     id: 'sertraline-50',
-    name: 'Sertraline 50mg',
+    name: 'Sertralin 50 mg',
     form: 'tablet',
     category: 'psychiatry',
     class: 'SSRI',
@@ -964,7 +964,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'escitalopram-10',
-    name: 'Escitalopram 10mg',
+    name: 'Essitalopram 10 mg',
     form: 'tablet',
     category: 'psychiatry',
     class: 'SSRI',
@@ -981,7 +981,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'fluoxetine-20',
-    name: 'Fluoxetine 20mg',
+    name: 'Fluoksetin 20 mg',
     form: 'capsule',
     category: 'psychiatry',
     class: 'SSRI',
@@ -992,7 +992,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'mirtazapine-30',
-    name: 'Mirtazapine 30mg',
+    name: 'Mirtazapin 30 mg',
     form: 'tablet',
     category: 'psychiatry',
     class: 'Atipik antidepresan',
@@ -1002,7 +1002,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'lorazepam-1',
-    name: 'Lorazepam 1mg',
+    name: 'Lorazepam 1 mg',
     form: 'tablet',
     category: 'psychiatry',
     class: 'Benzodiazepin',
@@ -1018,7 +1018,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'quetiapine-25',
-    name: 'Quetiapine 25mg',
+    name: 'Ketiyapin 25 mg',
     form: 'tablet',
     category: 'psychiatry',
     class: 'Atipik antipsikotik',
@@ -1028,7 +1028,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'methylphenidate-18',
-    name: 'Methylphenidate OROS 18mg',
+    name: 'Metilfenidat OROS 18 mg',
     form: 'tablet',
     category: 'psychiatry',
     class: 'MSS stimülanı',
@@ -1039,7 +1039,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'zolpidem-10',
-    name: 'Zolpidem 10mg',
+    name: 'Zolpidem 10 mg',
     form: 'tablet',
     category: 'psychiatry',
     class: 'Non-benzodiazepin hipnotik',
@@ -1052,7 +1052,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Migraine / Neuro ───────────
   {
     id: 'propranolol-40',
-    name: 'Propranolol 40mg',
+    name: 'Propranolol 40 mg',
     form: 'tablet',
     category: 'cardiovascular',
     class: 'Non-selektif β-bloker',
@@ -1063,7 +1063,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'topiramate-50',
-    name: 'Topiramate 50mg',
+    name: 'Topiramat 50 mg',
     form: 'tablet',
     category: 'neurology',
     class: 'Antiepileptik / migren profilaksisi',
@@ -1074,7 +1074,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'sumatriptan-50',
-    name: 'Sumatriptan 50mg',
+    name: 'Sumatriptan 50 mg',
     form: 'tablet',
     category: 'neurology',
     class: '5-HT1B/1D agonisti (triptan)',
@@ -1085,7 +1085,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'amitriptyline-25',
-    name: 'Amitriptyline 25mg',
+    name: 'Amiltriptilin 25 mg',
     form: 'tablet',
     category: 'neurology',
     class: 'Trisiklik antidepresan',
@@ -1101,7 +1101,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'gabapentin-300',
-    name: 'Gabapentin 300mg',
+    name: 'Gabapentin 300 mg',
     form: 'capsule',
     category: 'neurology',
     class: 'Antikonvülzan / nöropatik ağrı',
@@ -1118,7 +1118,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'carbamazepine-200',
-    name: 'Carbamazepine 200mg',
+    name: 'Karbamazepin 200 mg',
     form: 'tablet',
     category: 'neurology',
     class: 'Antikonvülzan',
@@ -1128,7 +1128,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'levodopa-carbidopa',
-    name: 'Levodopa/Carbidopa 100/25',
+    name: 'Levodopa/Karbidopa 100/25',
     form: 'tablet',
     category: 'neurology',
     class: 'Dopamin öncüsü',
@@ -1138,7 +1138,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'donepezil-5',
-    name: 'Donepezil 5mg',
+    name: 'Donepezil 5 mg',
     form: 'tablet',
     category: 'neurology',
     class: 'Kolinesteraz inhibitörü',
@@ -1148,7 +1148,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'prednisone-burst',
-    name: 'Prednisone 1mg/kg',
+    name: 'Prednizon 1 mg/kg',
     form: 'tablet',
     category: 'endocrine',
     class: 'Sistemik kortikosteroid',
@@ -1173,7 +1173,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Dermatology ───────────
   {
     id: 'hydrocortisone-1-cr',
-    name: 'Hydrocortisone 1% Cream',
+    name: 'Hidrokortizon %1 Krem',
     form: 'cream',
     category: 'dermatology',
     class: 'Topikal kortikosteroid (düşük potens)',
@@ -1188,7 +1188,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'mometasone-01-cr',
-    name: 'Mometasone 0.1% Cream',
+    name: 'Mometazon %0,1 Krem',
     form: 'cream',
     category: 'dermatology',
     class: 'Topikal kortikosteroid (orta potens)',
@@ -1204,7 +1204,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'clotrimazole-1-cr',
-    name: 'Clotrimazole 1% Cream',
+    name: 'Klotrimazol %1 Krem',
     form: 'cream',
     category: 'dermatology',
     class: 'Topikal azol antifungal',
@@ -1214,7 +1214,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'adapalene-01-gel',
-    name: 'Adapalene 0.1% Gel',
+    name: 'Adapalen %0,1 Jel',
     form: 'cream',
     category: 'dermatology',
     class: 'Topikal retinoid',
@@ -1225,7 +1225,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'benzoyl-peroxide-5',
-    name: 'Benzoyl Peroxide 5% Gel',
+    name: 'Benzoil Peroksit %5 Jel',
     form: 'cream',
     category: 'dermatology',
     class: 'Topikal keratolitik',
@@ -1235,7 +1235,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'metronidazole-gel',
-    name: 'Metronidazole 0.75% Gel',
+    name: 'Metronidazol %0,75 Jel',
     form: 'cream',
     category: 'dermatology',
     class: 'Topikal antibakteriyel',
@@ -1245,7 +1245,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'tacrolimus-01-oint',
-    name: 'Tacrolimus 0.1% Ointment',
+    name: 'Takrolimus %0,1 Merhem',
     form: 'cream',
     category: 'dermatology',
     class: 'Topikal kalsinörin inhibitörü',
@@ -1255,7 +1255,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'calcipotriol-oint',
-    name: 'Calcipotriol Ointment',
+    name: 'Kalsipotriol Merhem',
     form: 'cream',
     category: 'dermatology',
     class: 'Topikal D vitamini analoğu',
@@ -1265,7 +1265,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'permethrin-5-cream',
-    name: 'Permethrin 5% Cream',
+    name: 'Permetrin %5 Krem',
     form: 'cream',
     category: 'dermatology',
     class: 'Topikal skabisid',
@@ -1275,7 +1275,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'ketoconazole-shampoo',
-    name: 'Ketoconazole 2% Shampoo',
+    name: 'Ketokonazol %2 Şampuan',
     form: 'solution',
     category: 'dermatology',
     class: 'Topikal azol antifungal',
@@ -1287,7 +1287,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Ophthalmic / ENT drops ───────────
   {
     id: 'timolol-eye-drops',
-    name: 'Timolol 0.5% Eye Drops',
+    name: 'Timolol %0,5 Göz Damlası',
     form: 'solution',
     category: 'ophthalmic',
     class: 'Topikal β-bloker',
@@ -1298,7 +1298,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'latanoprost-eye-drops',
-    name: 'Latanoprost 0.005% Eye Drops',
+    name: 'Latanoprost %0,005 Göz Damlası',
     form: 'solution',
     category: 'ophthalmic',
     class: 'Prostaglandin analoğu',
@@ -1308,7 +1308,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'artificial-tears',
-    name: 'Artificial Tears',
+    name: 'Suni Gözyaşı',
     form: 'solution',
     category: 'ophthalmic',
     class: 'Göz yaşı damlası',
@@ -1320,7 +1320,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Urology ───────────
   {
     id: 'tamsulosin-04',
-    name: 'Tamsulosin 0.4mg',
+    name: 'Tamsulosin 0,4 mg',
     form: 'capsule',
     category: 'urology',
     class: 'α1-adrenerjik bloker',
@@ -1331,7 +1331,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'finasteride-5',
-    name: 'Finasteride 5mg',
+    name: 'Finasterid 5 mg',
     form: 'tablet',
     category: 'urology',
     class: '5α-redüktaz inhibitörü',
@@ -1341,7 +1341,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'sildenafil-50',
-    name: 'Sildenafil 50mg',
+    name: 'Sildenafil 50 mg',
     form: 'tablet',
     category: 'urology',
     class: 'PDE5 inhibitörü',
@@ -1352,7 +1352,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'solifenacin-5',
-    name: 'Solifenacin 5mg',
+    name: 'Solifenasin 5 mg',
     form: 'tablet',
     category: 'urology',
     class: 'Antikolinerjik (M3 selektif)',
@@ -1365,7 +1365,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Rheumatology / bone ───────────
   {
     id: 'methotrexate-15',
-    name: 'Methotrexate 15mg',
+    name: 'Metotreksat 15 mg',
     form: 'tablet',
     category: 'rheumatology',
     class: 'DMARD',
@@ -1382,7 +1382,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'hydroxychloroquine-200',
-    name: 'Hydroxychloroquine 200mg',
+    name: 'Hidroksiklorokin 200 mg',
     form: 'tablet',
     category: 'rheumatology',
     class: 'Antimalaryal DMARD',
@@ -1392,7 +1392,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'alendronate-70',
-    name: 'Alendronate 70mg',
+    name: 'Alendronat 70 mg',
     form: 'tablet',
     category: 'rheumatology',
     class: 'Bifosfonat',
@@ -1403,7 +1403,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'calcium-vitd',
-    name: 'Calcium 500 + Vit D3 1000IU',
+    name: 'Kalsiyum 500 + D Vit3 1000 IU',
     form: 'tablet',
     category: 'hematology-nutrition',
     class: 'Mineral / vitamin',
@@ -1419,7 +1419,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── Vitamins / hematinics ───────────
   {
     id: 'ferrous-sulfate-325',
-    name: 'Ferrous Sulfate 325mg',
+    name: 'Demir Sülfat 325 mg',
     form: 'tablet',
     category: 'hematology-nutrition',
     class: 'Oral demir',
@@ -1435,7 +1435,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'vitamin-b12-im',
-    name: 'Vitamin B12 1000mcg',
+    name: 'B12 Vitamini 1000 mcg',
     form: 'injection',
     category: 'hematology-nutrition',
     class: 'Kobalamin',
@@ -1445,7 +1445,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'vitamin-d3-50k',
-    name: 'Vitamin D3 50.000 IU',
+    name: 'D Vitamini 50.000 IU',
     form: 'capsule',
     category: 'hematology-nutrition',
     class: 'Kolekalsiferol',
@@ -1455,7 +1455,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'folic-acid-5',
-    name: 'Folic Acid 5mg',
+    name: 'Folik Asit 5 mg',
     form: 'tablet',
     category: 'hematology-nutrition',
     class: 'B9 vitamini',
@@ -1471,7 +1471,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'thiamine-100',
-    name: 'Thiamine 100mg',
+    name: 'Tiamin 100 mg',
     form: 'tablet',
     category: 'hematology-nutrition',
     class: 'B1 vitamini',
@@ -1483,7 +1483,7 @@ export const MEDICATIONS: Medication[] = [
   // ─────────── OB-GYN / menopause ───────────
   {
     id: 'combined-ocp',
-    name: 'Combined Oral Contraceptive',
+    name: 'Kombine Oral Kontraseptif',
     form: 'tablet',
     category: 'obgyn',
     class: 'Östrojen + progestin',
@@ -1494,7 +1494,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'tranexamic-acid-500',
-    name: 'Tranexamic Acid 500mg',
+    name: 'Traneksamik Asit 500 mg',
     form: 'tablet',
     category: 'obgyn',
     class: 'Antifibrinolitik',
@@ -1505,7 +1505,7 @@ export const MEDICATIONS: Medication[] = [
   },
   {
     id: 'estradiol-patch',
-    name: 'Estradiol Transdermal 50mcg/day',
+    name: 'Estradiol Transdermal 50 mcg/gün',
     form: 'cream',
     category: 'obgyn',
     class: 'Östrojen replasmanı',

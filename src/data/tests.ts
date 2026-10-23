@@ -24,7 +24,7 @@ export const TESTS: Test[] = [
   { id: 'dimer',      name: 'D-Dimer',                  category: 'lab', turnaroundSec: 35 },
   { id: 'troponin',   name: 'Yüksek Duyarlılıklı Troponin', category: 'lab', turnaroundSec: 40 },
   { id: 'tsh',        name: 'TSH',                      category: 'lab', turnaroundSec: 45 },
-  { id: 'type-screen',name: 'Kan Grubu ve Crossmatch',            category: 'lab', turnaroundSec: 45 },
+  { id: 'type-screen',name: 'Kan Grubu ve Çapraz Karşılaştırma',            category: 'lab', turnaroundSec: 45 },
   { id: 'urine',      name: 'İdrar tahlili',               category: 'lab', turnaroundSec: 25 },
   { id: 'urine-cx',   name: 'İdrar Kültürü',            category: 'lab', turnaroundSec: 60 },
   { id: 'blood-cx',   name: 'Kan Kültürleri (×2)',      category: 'lab', turnaroundSec: 75 },
@@ -158,7 +158,7 @@ export const TEST_PANELS: TestPanel[] = [
   {
     id: 'trauma',
     label: 'Travma Paneli',
-    description: 'CBC, BMP, koagülasyon, kan grubu ve crossmatch, laktat, akciğer grafisi, pelvis grafisi',
+    description: 'CBC, BMP, koagülasyon, kan grubu ve çapraz karşılaştırma, laktat, akciğer grafisi, pelvis grafisi',
     testIds: ['cbc', 'bmp', 'coag', 'type-screen', 'lactate', 'cxr', 'xr-pelvis'],
   },
 
@@ -187,7 +187,7 @@ export const TEST_PANELS: TestPanel[] = [
   {
     id: 'preop-clearance',
     label: 'Ameliyat Öncesi Değerlendirme',
-    description: 'CBC, BMP, koagülasyon, kan grubu ve crossmatch, EKG, akciğer grafisi',
+    description: 'CBC, BMP, koagülasyon, kan grubu ve çapraz karşılaştırma, EKG, akciğer grafisi',
     testIds: ['cbc', 'bmp', 'coag', 'type-screen', 'ecg', 'cxr'],
     clinicIds: ['general-surgery', 'orthopedics', 'urology', 'obgyn', 'cardiology'],
   },
@@ -354,7 +354,7 @@ export const TEST_PANELS: TestPanel[] = [
   {
     id: 'heme-coag-workup',
     label: 'Koagülopati Paneli',
-    description: 'CBC, koagülasyon, karaciğer fonksiyon testleri, kan grubu ve crossmatch',
+    description: 'CBC, koagülasyon, karaciğer fonksiyon testleri, kan grubu ve çapraz karşılaştırma',
     testIds: ['cbc', 'coag', 'lft', 'type-screen'],
     clinicIds: ['hematology'],
   },

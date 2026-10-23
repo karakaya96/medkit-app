@@ -202,7 +202,7 @@ export function HomeScreen() {
               }}
             >
               <div style={{ position: 'absolute', top: -12, left: 22 }} className="chip butter">
-                ★ first case
+                ★ ilk vaka
               </div>
               <div
                 style={{
@@ -237,7 +237,7 @@ export function HomeScreen() {
           ) : (
             <div className="plush-lg" style={{ background: 'var(--peach)', padding: 18, position: 'relative', transform: 'rotate(-0.6deg)' }}>
               <div style={{ position: 'absolute', top: -12, left: 22 }} className="chip butter">
-                ★ pick up where you left off
+                ★ kaldığınız yerden devam edin
               </div>
               <div
                 style={{
@@ -318,7 +318,7 @@ export function HomeScreen() {
             title="Simülatörün seni nasıl değerlendirdiğini gör — ajanlar, kaynaklar, katı kurallar"
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="chip butter" style={{ fontSize: 10 }}>NEW</span>
+              <span className="chip butter" style={{ fontSize: 10 }}>YENİ</span>
               <span style={{ fontWeight: 800 }}>Ajan turları</span>
               <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>· simülatör seni nasıl değerlendirir</span>
             </span>
@@ -346,7 +346,7 @@ export function HomeScreen() {
             title="Değerlendirme ajanının canlı haritası — alt kurallar ve oturumlar"
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="chip peach" style={{ fontSize: 10 }}>LIVE</span>
+              <span className="chip peach" style={{ fontSize: 10 }}>CANLI</span>
               <span style={{ fontWeight: 800 }}>Ajan topolojisi</span>
               <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>· değerlendirme ajanı → alt kurallar ve oturumlar</span>
             </span>

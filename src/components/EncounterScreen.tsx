@@ -150,7 +150,7 @@ function Loader() {
           letterSpacing: '0.05em',
         }}
       >
-        Loading polyclinic…
+        Poliklinik yükleniyor…
       </div>
     </Html>
   );

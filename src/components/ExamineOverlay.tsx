@@ -332,7 +332,7 @@ function HistoryTab({ patient }: { patient: NonNullable<ReturnType<typeof useGam
 
       {unanswered.length === 0 ? (
         <div className="plush" style={{ padding: 12, fontWeight: 700, color: 'var(--ink-2)' }}>
-          All questions covered. Move on to ordering tests or making a diagnosis.
+          Tüm soruları sordunuz. Artık tetkik isteyebilir veya tanı koyabilirsiniz.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -346,7 +346,7 @@ function HistoryTab({ patient }: { patient: NonNullable<ReturnType<typeof useGam
               marginTop: 8,
             }}
           >
-            Ask
+            Sor
           </div>
           {unanswered.map((q) => (
             <button
@@ -407,14 +407,14 @@ function TestsTab({ patient }: { patient: NonNullable<ReturnType<typeof useGameS
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-2)' }}>
-        Polyclinic tests return <strong>instantly</strong>. Sections are collapsed — click a row to open it.
+        Poliklinik tetkikleri <strong>anında</strong> sonuçlanır. Bölümler kapalıdır — açmak için bir satıra dokunun.
       </div>
 
       {/* Panels — clinic-scoped, collapsible. */}
       {visiblePanels.length > 0 && (
         <CollapsibleSection
           icon="🧪"
-          label={`Panels for ${currentClinic === 'all-specialties' ? 'every specialty' : 'this clinic'}`}
+          label={`${currentClinic === 'all-specialties' ? 'Tüm branşlar' : 'Bu klinik'} panelleri`}
           count={visiblePanels.length}
           tone="var(--butter)"
         >
@@ -908,7 +908,7 @@ function DiagnoseTab({
   if (c.diagnosisOptions.length === 0) {
     return (
       <div className="plush" style={{ padding: 14, fontWeight: 700, color: 'var(--ink-2)' }}>
-        No diagnosis options for this case.
+        Bu vaka için tanı seçeneği yok.
       </div>
     );
   }
@@ -917,7 +917,7 @@ function DiagnoseTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ fontWeight: 700, color: 'var(--ink-2)' }}>
-        Pick the most likely diagnosis based on what you've gathered so far.
+        Şimdiye kadar topladığınız bilgilere göre en olası tanıyı seçin.
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
         {shuffledOptions.map((dxId) => {
@@ -970,7 +970,7 @@ function DiagnoseTab({
             style={{ fontSize: 16, padding: '14px 0' }}
             onClick={onGoToRx}
           >
-            Write prescription →
+            Reçete yaz →
           </button>
           <button
             type="button"
@@ -1171,8 +1171,8 @@ function ChatTab({ patientName, bedIndex }: { patientName: string; bedIndex: num
   if (visible.length === 0) {
     return (
       <div className="plush" style={{ padding: 14, fontWeight: 700, color: 'var(--ink-2)' }}>
-        No conversation yet. The transcript appears here as you talk to {patientName.split(' ')[0]} —
-        and updates live during the consultation.
+        Henüz görüşme yok. {patientName.split(' ')[0]} ile konuştukça transkript burada görünür ve
+        görüşme sırasında canlı olarak güncellenir.
       </div>
     );
   }
@@ -1245,8 +1245,8 @@ function RxTab({
   if (!unlocked) {
     return (
       <div className="plush" style={{ padding: 14, fontWeight: 700, color: 'var(--ink-2)' }}>
-        Submit a diagnosis first — the prescription pad unlocks once the
-        <strong> Diagnose </strong> tab has a selected answer.
+        Önce tanı gönderin — reçete defteri, <strong>Tanı</strong> sekmesinde bir seçenek
+        işaretlendiğinde açılır.
       </div>
     );
   }
@@ -1354,8 +1354,8 @@ function RxTab({
             background: 'var(--cream)',
           }}
         >
-          Scope: <strong>{CLINIC_LABELS[specialty]}</strong> formulary —
-          drugs outside this specialty are hidden.
+          Kapsam: <strong>{CLINIC_LABELS[specialty]}</strong> formüleri —
+          bu branş dışındaki ilaçlar gizlenir.
         </div>
       )}
 
@@ -1366,7 +1366,7 @@ function RxTab({
           style={{ cursor: 'pointer' }}
           onClick={() => setFilter('all')}
         >
-          All
+          Tümü
         </span>
         {categories.map((c) => (
           <span
@@ -1480,7 +1480,7 @@ function RxTab({
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <label style={{ flex: '1 1 140px', fontSize: 11, fontWeight: 800, color: 'var(--ink-2)' }}>
-                  Dose
+                  Doz
                   <input
                     value={dose}
                     onChange={(e) => updatePicked(med.id, 'dose', e.target.value)}
@@ -1489,7 +1489,7 @@ function RxTab({
                   />
                 </label>
                 <label style={{ flex: '1 1 140px', fontSize: 11, fontWeight: 800, color: 'var(--ink-2)' }}>
-                  Duration
+                  Süre
                   <input
                     value={duration}
                     onChange={(e) => updatePicked(med.id, 'duration', e.target.value)}

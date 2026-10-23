@@ -654,7 +654,7 @@ function DoctorDesk({
           Rx
         </Text>
         <Text position={[0.03, 0.02, -0.14]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.024} color="#3a3a3a" anchorX="left" anchorY="middle">
-          Patient: ___________
+          Hasta: ___________
         </Text>
         {/* simulated lines of handwriting */}
         {[-0.06, -0.02, 0.02, 0.06, 0.1].map((dz, i) => (
@@ -871,7 +871,7 @@ function makeDiplomaTexture(
   // Subtitle
   ctx.font = 'italic 15px "Times New Roman", serif';
   ctx.fillStyle = '#5a3010';
-  ctx.fillText('hereby confers upon', w / 2, 118);
+  ctx.fillText('işbu belge ile', w / 2, 118);
 
   // Honoree name
   ctx.font = 'bold italic 30px "Times New Roman", serif';
@@ -881,7 +881,7 @@ function makeDiplomaTexture(
   // Degree
   ctx.font = 'italic 14px "Times New Roman", serif';
   ctx.fillStyle = '#5a3010';
-  ctx.fillText('the degree of', w / 2, 184);
+  ctx.fillText('derecesini vermiştir', w / 2, 184);
   ctx.font = 'bold 22px "Times New Roman", serif';
   ctx.fillStyle = '#6a2a10';
   ctx.fillText(degree.toUpperCase(), w / 2, 214);
@@ -921,7 +921,7 @@ function makeDiplomaTexture(
   // Circular text around the seal
   ctx.fillStyle = '#f4d078';
   ctx.font = 'bold 9px sans-serif';
-  const circText = '★ OFFICIAL SEAL OF MEDICINE ★';
+  const circText = '★ TIP FAKÜLTESİ MÜHRÜ ★';
   const radius = 40;
   for (let i = 0; i < circText.length; i++) {
     const a = -Math.PI / 2 + (i / circText.length) * Math.PI * 2;
@@ -942,15 +942,15 @@ function makeDiplomaTexture(
   ctx.font = 'italic 22px "Brush Script MT", cursive';
   ctx.fillStyle = '#2a1005';
   ctx.textAlign = 'center';
-  ctx.fillText(`${name.split(' ').pop() ?? 'Director'}, MD`, 360, 287);
+  ctx.fillText(`${name.split(' ').pop() ?? 'Dekan'}, MD`, 360, 287);
   ctx.font = '11px "Times New Roman", serif';
   ctx.fillStyle = '#4a2a10';
-  ctx.fillText('Dean, Faculty of Medicine', 360, 312);
+  ctx.fillText('Dekan, Tıp Fakültesi', 360, 312);
 
   // Year
   ctx.font = 'bold 20px "Times New Roman", serif';
   ctx.fillStyle = '#3a1d08';
-  ctx.fillText(`Class of ${year}`, w / 2, 355);
+  ctx.fillText(`${year} mezunu`, w / 2, 355);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.anisotropy = 4;
@@ -980,7 +980,7 @@ function makeAnatomyChartTexture(): CanvasTexture {
   ctx.fillStyle = '#4a1f0a';
   ctx.font = 'bold 32px "Times New Roman", serif';
   ctx.textAlign = 'center';
-  ctx.fillText('HUMAN ANATOMY', w / 2, 46);
+  ctx.fillText('İNSAN ANATOMİSİ', w / 2, 46);
   ctx.font = 'italic 15px "Times New Roman", serif';
   ctx.fillStyle = '#5a2818';
   ctx.fillText('Organa Thoracis et Abdominis', w / 2, 70);
@@ -1223,7 +1223,7 @@ function makeAnatomyChartTexture(): CanvasTexture {
   ctx.fillStyle = '#4a1f0a';
   ctx.font = 'italic 11px "Times New Roman", serif';
   ctx.textAlign = 'center';
-  ctx.fillText("Gray's Atlas of Human Anatomy — Plate XIV", w / 2, h - 24);
+  ctx.fillText("Gray's Atlas of Human Anatomy — Levha XIV", w / 2, h - 24);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.anisotropy = 4;
@@ -1887,7 +1887,7 @@ function FirstAidCabinet({ position, rotationY = 0 }: { position: [number, numbe
       </mesh>
       {/* FIRST AID label */}
       <Text position={[0, -0.22, 0.095]} fontSize={0.04} color="#2a9a4a" anchorX="center" anchorY="middle" fontWeight={700}>
-        FIRST AID
+        İLK YARDIM
       </Text>
       {/* cabinet handle */}
       <mesh position={[0.22, -0.08, 0.098]} castShadow>
@@ -3027,7 +3027,7 @@ export function Polyclinic({
         anchorX="center"
         anchorY="middle"
       >
-        CONSULTATION
+        MUAYENE
       </Text>
     </>
   );

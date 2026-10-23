@@ -114,7 +114,7 @@ export function SplashScreen() {
             boxShadow: 'var(--plush-tiny)',
           }}
         >
-          Her hatayı gerçek hayatta sayılmadan önce yapabileceğin klinik.
+          Hataları gerçek hayatta karşılığı olmadan yapabileceğiniz klinik.
         </div>
 
         <div className="popin breathe" style={{ animationDelay: '.3s', marginTop: 24 }}>
@@ -141,7 +141,7 @@ export function SplashScreen() {
             marginTop: 8,
           }}
         >
-          press{' '}
+          Devam etmek için{' '}
           <span
             style={{
               background: 'white',
@@ -153,7 +153,7 @@ export function SplashScreen() {
           >
             boşluk
           </span>{' '}
-          ile devam et
+          tuşuna basın
         </div>
       </div>
 
