@@ -81,6 +81,25 @@ port_busy() {
   fi
 }
 
+# Tarayıcıyı ayrı bir süreç olarak açar. Çıktısı /dev/null'a gittiği için
+# terminaldeki log borusunu tutmaz; kapatınca arkada kalıntı bırakmaz.
+open_browser() {
+  local url="$1"
+  [ "${MEDKIT_NO_BROWSER:-0}" = "1" ] && return 0
+  (
+    for _ in $(seq 1 30); do
+      port_busy 5173 && break
+      sleep 0.2
+    done
+    if command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "$url" >/dev/null 2>&1 &
+    elif command -v open >/dev/null 2>&1; then
+      open "$url" >/dev/null 2>&1 &
+    fi
+  ) >/dev/null 2>&1 &
+  disown 2>/dev/null || true
+}
+
 need_file() {
   if [ ! -e "$1" ]; then
     echo "[hata] $1 yok — önce README'deki kurulum adımını çalıştır." >&2
@@ -114,10 +133,11 @@ fi
 if port_busy 5173; then
   echo "[atla] Vite zaten çalışıyor (:5173)"
 else
-  setsid node node_modules/vite/bin/vite.js --host 127.0.0.1 \
+  MEDKIT_NO_OPEN=1 setsid node node_modules/vite/bin/vite.js --host 127.0.0.1 \
     > >(sed -u 's/^/[vite] /' | tee -a "$VITE_LOG") 2>&1 &
   pids+=("$!")
   echo "[başladı] Vite → http://127.0.0.1:5173  (log: $VITE_LOG)"
+  open_browser "http://127.0.0.1:5173"
 fi
 
 # ── ses worker'ı (opsiyonel) ────────────────────────────

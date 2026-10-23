@@ -27,7 +27,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    open: true,
+    // `npm run app` sets MEDKIT_NO_OPEN=1 and opens the browser itself with a
+    // detached stdout — otherwise the browser inherits the log pipe and keeps
+    // the dev-runner's helper processes alive after shutdown.
+    open: !process.env.MEDKIT_NO_OPEN,
     proxy: PROXY,
   },
   preview: {
