@@ -3,7 +3,8 @@ import { store, useGameState } from '../game/store';
 import { TESTS, TEST_PANELS, testById } from '../data/tests';
 import { getTestReport } from '../data/defaultTestResults';
 import { getImagingExamples } from '../data/radiologyImages';
-import { POLYCLINIC_DIAGNOSIS_LABELS, getCaseSpecialty } from '../data/polyclinicPatients';
+import { getCaseSpecialty } from '../data/polyclinicPatients';
+import { diagnosisLabel } from '../data/diagnosisLabels';
 import { MEDICATIONS, CATEGORY_LABELS, SPECIALTY_MEDICATION_CATEGORIES, medicationById, type Medication, type MedicationCategory } from '../data/medications';
 import { TREATMENTS } from '../data/treatments';
 import { CLINIC_LABELS } from '../game/clinic';
@@ -17,8 +18,7 @@ interface Props {
   onDispatch: () => void;
 }
 
-const diagLabel = (id: string): string =>
-  POLYCLINIC_DIAGNOSIS_LABELS[id] ?? id.replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+const diagLabel = (id: string): string => diagnosisLabel(id);
 
 const FORM_LABELS: Record<Medication['form'], string> = {
   tablet: 'tablet',

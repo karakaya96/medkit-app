@@ -8,7 +8,7 @@ import { getRecommendation } from '../data/guidelines';
 import { useAttendingDebrief } from '../agents/useAttendingDebrief';
 import { buildDebriefRequest, summariseRequest } from '../agents/debriefRequest';
 import { saveEvalHistory, getEvalHistory, type EvalHistoryEntry } from '../data/evalHistory';
-import { POLYCLINIC_DIAGNOSIS_LABELS } from '../data/polyclinicPatients';
+import { diagnosisLabel } from '../data/diagnosisLabels';
 import {
   aggregateDomainScore,
   averagePercent,
@@ -223,7 +223,7 @@ function Criterion({ status, text, evidence, cite }: CriterionProps) {
                 <>
                   {' \u00B7 '}
                   <a href={cite.url} target="_blank" rel="noreferrer" style={{ color: 'var(--ink-2)' }}>
-                    open
+                    kaynak
                   </a>
                 </>
               )}
@@ -414,7 +414,7 @@ function GradingProgress({ partialNarration }: { partialNarration: string }) {
         </div>
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 32, lineHeight: 1.05, margin: '4px 0 12px' }}>
-            The attending is grading{'\u2026'}
+            Hoca değerlendiriyor{'\u2026'}
           </h1>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {GRADING_STEPS.map((label, i) => {
@@ -1027,7 +1027,7 @@ function saveEvaluation(
     caseName: c.name,
     caseAge: c.age,
     caseGender: c.gender,
-    diagnosisLabel: POLYCLINIC_DIAGNOSIS_LABELS[dxId] ?? dxId,
+    diagnosisLabel: diagnosisLabel(dxId),
     verdict: evaluation.global_rating,
     evaluation,
     patientSnapshot: patient,

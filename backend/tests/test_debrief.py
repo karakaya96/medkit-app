@@ -144,6 +144,108 @@ class DebriefGradingTests(unittest.TestCase):
         self.assertEqual(ev["criteria"][1]["verdict"], "missed")
         self.assertTrue(ev["narrative"])
 
+    def test_english_output_triggers_turkish_retry(self) -> None:
+        english = {
+            "criteria": [
+                {"criterion_id": "dg-1", "verdict": "met",
+                 "evidence": "Trainee asked about onset as recorded in the encounter log."},
+                {"criterion_id": "dg-2", "verdict": "met",
+                 "evidence": "Trainee asked about travel."},
+                {"criterion_id": "cm-1", "verdict": "met",
+                 "evidence": "Trainee gave epinephrine."},
+            ],
+            "safety_breach": None,
+            "highlights": ["Good structured history."],
+            "improvements": ["Elicit ICE."],
+            "narrative": "The trainee took a good history but missed ICE.",
+        }
+        turkish = {
+            "criteria": [
+                {"criterion_id": "dg-1", "verdict": "met",
+                 "evidence": "Aday başlangıç zamanını sordu."},
+                {"criterion_id": "dg-2", "verdict": "met",
+                 "evidence": "Aday seyahat öyküsünü sordu."},
+                {"criterion_id": "cm-1", "verdict": "met",
+                 "evidence": "Aday epinefrin uyguladı."},
+            ],
+            "safety_breach": None,
+            "highlights": ["Düzenli öykü aldı."],
+            "improvements": ["ICE keşfedilmeli."],
+            "narrative": "Aday iyi öykü aldı ancak ICE'yi atladı.",
+        }
+        client = MagicMock()
+        client.chat.completions.create.side_effect = [
+            SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(english)))],
+                model=server.GRADER_MODEL,
+            ),
+            SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(turkish)))],
+                model=server.GRADER_MODEL,
+            ),
+        ]
+        ev = server.run_debrief_evaluation_openai(client, _request()).evaluation
+        self.assertEqual(client.chat.completions.create.call_count, 2)
+        self.assertIn("Aday", ev["criteria"][0]["evidence"])
+        self.assertIn("ICE", ev["narrative"])
+
+    def test_english_output_is_translated_as_last_resort(self) -> None:
+        english = {
+            "criteria": [
+                {"criterion_id": "dg-1", "verdict": "met",
+                 "evidence": "Trainee asked about onset."},
+                {"criterion_id": "dg-2", "verdict": "met",
+                 "evidence": "Trainee asked about travel."},
+                {"criterion_id": "cm-1", "verdict": "met",
+                 "evidence": "Trainee gave epinephrine."},
+            ],
+            "safety_breach": {"what": "The critical action was not confirmed.", "guideline_ref": None},
+            "highlights": ["Good structured history."],
+            "improvements": ["Elicit ICE."],
+            "narrative": "The trainee took a good history but missed ICE.",
+        }
+        translations = {"translations": [
+            "Aday başlangıç zamanını sordu.",
+            "Aday seyahat öyküsünü sordu.",
+            "Aday epinefrin uyguladı.",
+            "Kritik işlem doğrulanmadı.",
+            "Düzenli öykü aldı.",
+            "ICE keşfedilmeli.",
+            "Aday iyi öykü aldı ancak ICE'yi atladı.",
+        ]}
+        client = MagicMock()
+        client.chat.completions.create.side_effect = [
+            SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(english)))],
+                model=server.GRADER_MODEL,
+            ),
+            SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(english)))],
+                model=server.GRADER_MODEL,
+            ),
+            SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(translations)))],
+                model=server.GRADER_MODEL,
+            ),
+        ]
+        ev = server.run_debrief_evaluation_openai(client, _request()).evaluation
+        self.assertEqual(client.chat.completions.create.call_count, 3)
+        self.assertIn("Aday", ev["criteria"][0]["evidence"])
+        self.assertIn("Kritik", ev["safety_breach"]["what"])
+        self.assertIn("ICE", ev["narrative"])
+
+    def test_looks_english_helper(self) -> None:
+        self.assertTrue(server._looks_english(
+            "Trainee asked about the onset as recorded in the encounter log."
+        ))
+        self.assertTrue(server._looks_english(
+            "Diagnosis was correct (anaphylaxis)."
+        ))
+        self.assertFalse(server._looks_english(
+            'Aday "Ne yediniz?" sorusunu sordu ve yanıtı kaydetti.'
+        ))
+        self.assertFalse(server._looks_english("EKG normal, troponin negatif."))
+
     def test_malformed_json_is_retried(self) -> None:
         valid = json.dumps({
             "criteria": [

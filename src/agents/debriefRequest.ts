@@ -11,6 +11,7 @@ import type {
   RubricCriterion,
 } from '../game/types.ts';
 import { getRubricFor } from '../data/autoRubric.ts';
+import { diagnosisLabel } from '../data/diagnosisLabels.ts';
 import {
   GUIDELINES,
   getGuideline,
@@ -25,7 +26,12 @@ export interface DebriefRequest {
   case_summary: {
     chief_complaint: string;
     correct_diagnosis_id: string;
+    /** Turkish label for the gold-standard diagnosis — the grader must quote
+     *  this, never the raw slug, in human-readable output. */
+    correct_diagnosis_label: string;
     diagnosis_options: string[];
+    /** Turkish labels aligned with `diagnosis_options` (same order). */
+    diagnosis_option_labels: string[];
     severity: string;
     age: number;
     gender: 'M' | 'F';
@@ -154,7 +160,9 @@ export function buildDebriefRequest(
     case_summary: {
       chief_complaint: c.chiefComplaint,
       correct_diagnosis_id: c.correctDiagnosisId,
+      correct_diagnosis_label: diagnosisLabel(c.correctDiagnosisId),
       diagnosis_options: c.diagnosisOptions,
+      diagnosis_option_labels: c.diagnosisOptions.map(diagnosisLabel),
       severity: c.severity,
       age: c.age,
       gender: c.gender,

@@ -6989,6 +6989,9 @@ export const POLYCLINIC_DIAGNOSIS_LABELS: Record<string, string> = {
   'umbilical-hernia': 'Göbek Fıtığı',
   'thyroid-nodule': 'Tiroid Nodülü',
   // Differential-only diagnoses referenced in diagnosisOptions
+  'low-back-pain': 'Bel Ağrısı',
+  'pulmonary-embolism': 'Pulmoner Emboli',
+  'uterine-fibroid': 'Uterin Fibroid',
   'thrombotic-thrombocytopenic-purpura': 'Trombotik Trombositopenik Purpura',
   'hemophilia-a': 'Hemofili A',
   'anemia-chronic-disease': 'Kronik Hastalık Anemisi',

@@ -2,7 +2,8 @@ import type { FaceAccessory, FaceMood } from '../components/primitives';
 import type { PatientCase } from '../game/types';
 import type { ClinicId } from '../game/clinic';
 import { CLINIC_LABELS } from '../game/clinic';
-import { POLYCLINIC_CASES, POLYCLINIC_DIAGNOSIS_LABELS } from './polyclinicPatients';
+import { POLYCLINIC_CASES } from './polyclinicPatients';
+import { diagnosisLabel } from './diagnosisLabels';
 import { PATIENT_CASES } from './patients';
 
 /** Cute-cartoon face descriptor for the case library. Derived deterministically
@@ -82,7 +83,7 @@ function pickMood(p: PatientCase): FaceMood {
 }
 
 function diagLabel(id: string): string {
-  return POLYCLINIC_DIAGNOSIS_LABELS[id] ?? id.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return diagnosisLabel(id);
 }
 
 function tagsFor(p: PatientCase, clinic: ClinicId): string[] {

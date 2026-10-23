@@ -16,6 +16,7 @@ import { POLYCLINIC_CASES } from '../../src/data/polyclinicPatients.ts';
 import { TESTS } from '../../src/data/tests.ts';
 import { TREATMENTS } from '../../src/data/treatments.ts';
 import { MEDICATIONS } from '../../src/data/medications.ts';
+import { diagnosisLabel } from '../../src/data/diagnosisLabels.ts';
 import type { PatientCase } from '../../src/game/types.ts';
 
 type Violation = { case: string; rule: string; detail: string };
@@ -96,6 +97,17 @@ export function verifyDataIntegrity(): Violation[] {
         case: id,
         rule: 'duplicate case id',
         detail: `${count} occurrences`,
+      });
+    }
+  }
+
+  for (const dx of knownDiagnoses) {
+    const label = diagnosisLabel(dx);
+    if (label === dx) {
+      violations.push({
+        case: `dx:${dx}`,
+        rule: 'diagnosis has no Turkish label',
+        detail: dx,
       });
     }
   }

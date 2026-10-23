@@ -26,6 +26,7 @@ import ipaddress
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -267,13 +268,20 @@ DEBRIEF_SYSTEM_PROMPT = (
     "simulator. You are not a coach and you do not address a real patient. "
     "Return STRICT JSON ONLY — no prose before or after, no markdown fences.\n\n"
 
-    "LANGUAGE: write every human-readable value (evidence, safety_breach.what, "
-    "highlights, improvements, narrative) in Turkish (tr-TR). Keep JSON keys, "
-    "enum values and guideline recIds exactly as specified.\n\n"
+    "LANGUAGE (NON-NEGOTIABLE): write every human-readable value (evidence, "
+    "safety_breach.what, highlights, improvements, narrative) in Turkish "
+    "(tr-TR). Keep JSON keys, enum values and guideline recIds exactly as "
+    "specified. English output makes the answer invalid: sentences such as "
+    "'Trainee asked …', 'The trainee …' or 'No empathic response was observed' "
+    "must be written as Turkish, e.g. 'Aday \"Ne yediniz?\" sorusunu sordu "
+    "(encounter_log.history_questions_asked[0])' and 'Empatik yanıt "
+    "gözlenmedi'. Never leave a single English sentence.\n\n"
 
     "The user message is one JSON object with:\n"
-    "  • case_summary — chief complaint, gold-standard diagnosis id, options, "
-    "severity, age, gender.\n"
+    "  • case_summary — chief complaint, gold-standard diagnosis id and its "
+    "Turkish label (`correct_diagnosis_label`), the option ids plus their "
+    "Turkish labels (`diagnosis_option_labels`, same order), severity, age, "
+    "gender.\n"
     "  • rubric — three domains (data_gathering, clinical_management, "
     "interpersonal) plus optional safety_netting. Every criterion has an id, "
     "label, weight and an `evidence` string describing what counts as met.\n"
@@ -319,7 +327,14 @@ DEBRIEF_SYSTEM_PROMPT = (
     "trainee's actual words. Do not invent dialogue.\n"
     "  • The cases are synthetic and doses simplified; grade only what the "
     "trainee did in this encounter.\n"
-    "  • Never frame output as medical advice for real patients."
+    "  • Never frame output as medical advice for real patients.\n"
+    "  • When you name a diagnosis in human-readable text, use the Turkish "
+    "label from case_summary (e.g. 'Anafilaksi'), never the raw id "
+    "('anaphylaxis').\n"
+    "  • Never paste internal identifiers, JSON keys or enum values into "
+    "prose: write 'taburcu', 'gözlem', 'servise yatış', 'yoğun bakım' instead "
+    "of 'discharge/observe/admit-floor/admit-icu', and 'kriter dg-02' only "
+    "when you also say what it means in Turkish."
 )
 
 _openai_client: Optional["OpenAI"] = None
@@ -823,6 +838,159 @@ def _debrief_completion(
     return client.chat.completions.create(**kwargs)  # type: ignore[attr-defined]
 
 
+# Free models occasionally ignore the Turkish instruction in the system
+# prompt and answer in English. These helpers detect that and force a retry,
+# with a one-shot translation pass as the last resort — the UI must never
+# show English debrief text.
+_TURKISH_CHARS = "çğıöşüÇĞİÖŞÜ"
+_EN_STOPWORDS = frozenset({
+    "the", "a", "an", "and", "or", "but", "if", "then", "than", "that", "this",
+    "these", "those", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "not", "no", "only", "also",
+    "with", "without", "from", "into", "during", "after", "before", "between",
+    "about", "for", "of", "to", "in", "on", "at", "by", "as", "when", "which",
+    "while", "their", "they", "them", "there", "here", "you", "your", "we",
+    "our", "it", "its", "he", "she", "his", "her", "trainee", "patient",
+    "asked", "recorded", "observed",
+})
+# Content words that never appear in Turkish prose but do appear in English
+# grading feedback. One of them is already a strong signal.
+_EN_CONTENT_WORDS = frozenset({
+    "diagnosis", "diagnoses", "correct", "incorrect", "treatment", "treated",
+    "administered", "confirmed", "missed", "performed", "documented",
+    "history", "management", "empathic", "response", "critical", "action",
+    "structured", "introduction", "agenda", "summary", "safety", "netting",
+    "discharge", "admit", "prescription", "dose", "duration", "vitals",
+    "examination", "follow", "up", "plan", "greeted", "elicited", "stated",
+})
+
+DEBRIEF_TURKISH_CORRECTION = (
+    "ÖNEMLİ DÜZELTME: Önceki yanıtında İngilizce metinler vardı. evidence, "
+    "safety_breach.what, highlights, improvements ve narrative alanlarının "
+    "TAMAMI Türkçe (tr-TR) olmak zorunda. 'Trainee asked …', 'The trainee …', "
+    "'No … was observed' gibi İngilizce cümleler kullanma; Türkçe yaz. "
+    "JSON anahtarları, enum değerleri ve guideline_ref aynı kalsın. "
+    "Yalnızca JSON döndür."
+)
+
+_DEBRIEF_TRANSLATE_PROMPT = (
+    "Sen Türkçe tıbbi çeviri uzmanısın. Sana verilen JSON'daki 'strings' "
+    "dizisindeki her metni doğal, akıcı Türkçeye (tr-TR) çevir. Tıbbi terimleri "
+    "Türkçe klinik karşılıklarıyla yaz; ilaç adları, ölçü birimleri ve "
+    "kısaltmalar (EKG, IM, ICE, SEGUE) aynı kalsın. Dizinin sırasını ve "
+    "uzunluğunu koru. Yalnızca {\"translations\": [\"...\"]} biçiminde JSON "
+    "döndür."
+)
+
+
+def _looks_english(text: str) -> bool:
+    """Heuristic: English function/content-word density without Turkish chars."""
+    if not text or len(text) < 8:
+        return False
+    if any(ch in _TURKISH_CHARS for ch in text):
+        return False
+    words = re.findall(r"[A-Za-z][A-Za-z'\-]*", text)
+    if len(words) < 4:
+        return False
+    lowered = [w.lower() for w in words]
+    stop_hits = sum(1 for w in lowered if w in _EN_STOPWORDS)
+    content_hits = sum(1 for w in lowered if w in _EN_CONTENT_WORDS)
+    hits = stop_hits + content_hits
+    if hits >= 2 and hits / len(words) >= 0.12:
+        return True
+    # A single unmistakable English content word in a longer sentence is
+    # enough — e.g. "Diagnosis was correct (anaphylaxis)." (one stopword,
+    # two content words, but still English).
+    return content_hits >= 1 and len(words) >= 5
+
+
+def _iter_evaluation_strings(parsed: dict):
+    for item in parsed.get("criteria", []) or []:
+        if isinstance(item, dict):
+            ev = item.get("evidence")
+            if isinstance(ev, str) and ev.strip():
+                yield ev
+    safety = parsed.get("safety_breach")
+    if isinstance(safety, dict):
+        what = safety.get("what")
+        if isinstance(what, str) and what.strip():
+            yield what
+    for key in ("highlights", "improvements"):
+        values = parsed.get(key)
+        if isinstance(values, list):
+            for value in values:
+                if isinstance(value, str) and value.strip():
+                    yield value
+    narrative = parsed.get("narrative")
+    if isinstance(narrative, str) and narrative.strip():
+        yield narrative
+
+
+def _evaluation_has_english(parsed: dict) -> bool:
+    return any(_looks_english(text) for text in _iter_evaluation_strings(parsed))
+
+
+def _apply_evaluation_translations(parsed: dict, translations: list) -> None:
+    index = 0
+
+    def take(original: str) -> str:
+        nonlocal index
+        value = translations[index] if index < len(translations) else None
+        index += 1
+        return value.strip() if isinstance(value, str) and value.strip() else original
+
+    for item in parsed.get("criteria", []) or []:
+        if isinstance(item, dict) and isinstance(item.get("evidence"), str):
+            item["evidence"] = take(item["evidence"])
+    safety = parsed.get("safety_breach")
+    if isinstance(safety, dict) and isinstance(safety.get("what"), str):
+        safety["what"] = take(safety["what"])
+    for key in ("highlights", "improvements"):
+        values = parsed.get(key)
+        if isinstance(values, list):
+            parsed[key] = [
+                take(value) if isinstance(value, str) else value for value in values
+            ]
+    if isinstance(parsed.get("narrative"), str):
+        parsed["narrative"] = take(parsed["narrative"])
+
+
+def _translate_evaluation_strings(
+    client: "OpenAI", provider: str, parsed: dict
+) -> bool:
+    """Translate every human-readable debrief string to Turkish in one call."""
+    texts = list(_iter_evaluation_strings(parsed))
+    if not texts:
+        return False
+    try:
+        response = client.chat.completions.create(  # type: ignore[attr-defined]
+            model=TASK_MODELS[provider]["grader"],
+            max_tokens=min(DEBRIEF_MAX_TOKENS, 2000),
+            temperature=0,
+            timeout=DEBRIEF_TIMEOUT_SEC,
+            messages=[
+                {"role": "system", "content": _DEBRIEF_TRANSLATE_PROMPT},
+                {
+                    "role": "user",
+                    "content": json.dumps({"strings": texts}, ensure_ascii=False),
+                },
+            ],
+            response_format={"type": "json_object"},
+            **_reasoning_kwargs(provider),
+        )
+        raw = (response.choices[0].message.content or "").strip()
+        data = json.loads(_strip_json(raw))
+    except Exception as e:
+        _agent_log.warning("debrief translation fallback failed: %s", e)
+        return False
+    translations = data.get("translations") if isinstance(data, dict) else None
+    if not isinstance(translations, list) or len(translations) != len(texts):
+        _agent_log.warning("debrief translation fallback: unexpected shape")
+        return False
+    _apply_evaluation_translations(parsed, translations)
+    return True
+
+
 def run_debrief_evaluation_openai(
     client: "OpenAI",
     req: DebriefRequest,
@@ -834,7 +1002,7 @@ def run_debrief_evaluation_openai(
     model = TASK_MODELS[provider]["grader"]
     weights = _rubric_weights(req.rubric)
     if not weights:
-        raise HTTPException(status_code=400, detail="rubric contains no criteria")
+        raise HTTPException(status_code=400, detail="Değerlendirme rubriğinde kriter yok.")
     user_payload = json.dumps(req.model_dump(), ensure_ascii=False)
     messages = [
         {"role": "system", "content": DEBRIEF_SYSTEM_PROMPT},
@@ -842,13 +1010,20 @@ def run_debrief_evaluation_openai(
     ]
     parsed: Optional[dict] = None
     last_error = ""
-    for attempt, json_mode in enumerate((True, False), start=1):
+    language_nudge = False
+    for attempt in range(1, 4):
+        json_mode = attempt == 1
+        attempt_messages = messages
+        if language_nudge:
+            attempt_messages = messages + [
+                {"role": "user", "content": DEBRIEF_TURKISH_CORRECTION}
+            ]
         try:
             response = _debrief_completion(
-                client, messages, json_mode=json_mode, provider=provider
+                client, attempt_messages, json_mode=json_mode, provider=provider
             )
         except Exception as e:  # provider/model may reject response_format
-            last_error = f"request failed: {e}"
+            last_error = f"istek başarısız: {e}"
             _agent_log.warning("debrief attempt %d: %s", attempt, last_error)
             continue
         choice = response.choices[0]
@@ -859,7 +1034,7 @@ def run_debrief_evaluation_openai(
             getattr(choice, "finish_reason", "?"), len(raw),
         )
         if not raw:
-            last_error = "empty response"
+            last_error = "boş yanıt"
             continue
         try:
             candidate = json.loads(_strip_json(raw))
@@ -868,15 +1043,29 @@ def run_debrief_evaluation_openai(
             if candidate is not None:
                 _agent_log.warning("debrief: salvaged truncated JSON (%d chars)", len(raw))
         if isinstance(candidate, dict):
+            if _evaluation_has_english(candidate) and not language_nudge:
+                last_error = "yanıt Türkçe değil"
+                language_nudge = True
+                _agent_log.warning(
+                    "debrief attempt %d: English output detected, retrying in Turkish",
+                    attempt,
+                )
+                continue
             parsed = candidate
             break
-        last_error = "malformed JSON"
+        last_error = "geçersiz JSON"
         _agent_log.warning("debrief attempt %d malformed JSON: %r", attempt, raw[:240])
     if parsed is None:
         raise HTTPException(
             status_code=502,
-            detail=f"debrief model could not produce valid JSON ({last_error})",
+            detail=f"Değerlendirme modeli geçerli JSON üretemedi ({last_error}).",
         )
+
+    # Last resort: if the retry still came back in English, translate the
+    # human-readable fields in one extra call rather than showing English.
+    if _evaluation_has_english(parsed):
+        _agent_log.warning("debrief: still not Turkish after retry, translating")
+        _translate_evaluation_strings(client, provider, parsed)
 
     allowed_refs = _allowed_refs(req.registry_slice)
 
