@@ -134,7 +134,28 @@ EHR_API_TOKEN=
 
 ---
 
-## Run (three terminals)
+## Run
+
+### Tek terminal (önerilen)
+
+`scripts/dev-all.sh` frontend'i ve backend'i birlikte başlatır; Ctrl+C ikisini
+birden kapatır. Zaten açık olan bir servis varsa onu atlar, yani yanlışlıkla
+ikinci kez çalıştırmak zarar vermez.
+
+```bash
+npm run app         # Vite (5173) + FastAPI backend (8787)
+npm run app:voice   # + LiveKit ses worker'ı
+```
+
+Canlı loglar `[backend]` / `[vite]` / `[voice]` önekleriyle aynı terminale
+akar. Tam loglar: `/tmp/medkit-backend.log`, `/tmp/medkit-vite.log`,
+`/tmp/medkit-voice.log`. Durdurunca terminal kapanır, arkada süreç kalmaz.
+
+> Ses worker'ı için LiveKit'in de ayakta olması gerekir (Cloud ya da yerel
+> `livekit-server --dev --bind 127.0.0.1`). `npm run voice:doctor` eksikleri
+> listeler.
+
+### Üç terminal (ayrı ayrı)
 
 ```bash
 # Terminal 1 — frontend
@@ -169,6 +190,8 @@ Open http://localhost:5173 and grant microphone permission when prompted.
 
 ```bash
 npm run build      # tsc + vite build
+npm run app        # frontend + backend tek terminalde (Ctrl+C ikisini kapatır)
+npm run app:voice  # + LiveKit ses worker'ı
 npm run preview    # preview production build
 npm run verify     # deterministic invariants over src/data/* — run after editing cases/tests/treatments
 npm run test       # custom-tools + loop-commands tests

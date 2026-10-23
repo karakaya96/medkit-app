@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node node_modules/vite/bin/vite.js",
+    "app": "bash scripts/dev-all.sh",
+    "app:voice": "bash scripts/dev-all.sh --voice",
     "build": "node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build",
     "preview": "node node_modules/vite/bin/vite.js preview",
     "verify": "node scripts/verify/run-all.ts",
